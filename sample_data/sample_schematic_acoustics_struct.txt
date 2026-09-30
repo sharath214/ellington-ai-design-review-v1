@@ -1,0 +1,20 @@
+PROJECT: ELLINGTON BUKADRA RESIDENTIAL TOWER
+LOCATION: PLOT 6117262, MEYDAN HORIZON, DUBAI, UAE
+STAGE: SCHEMATIC DESIGN
+DISCIPLINE: ACOUSTICS & STRUCTURAL ENGINEERING
+SUBMISSION VERSION: V1.0
+
+1. ACOUSTIC DESIGN CRITERIA (INFOSIGHT ACOUSTIC REPORT)
+- Internal Ambient Noise Levels: Bedrooms NC 30 (LAeq 35 dB), Living Rooms NC 35 (LAeq 40 dB), Corridors NC 40.
+- Sound Transmission Class (STC) & Field Sound Transmission:
+  * Inter-tenancy separating walls: STC 55 / DnT,w 50 dB (double plasterboard with acoustic insulation quilt).
+  * Floor/Ceiling impact insulation: IIC 55 / L'n,w <= 55 dB with resilient acoustic underlay beneath porcelain tiles.
+  * Mechanical plant room enclosure: STC 60 with vibration isolation spring mounts for chillers and pumps.
+- Facade Acoustic Glazing: Minimum Rw+Ctr 38 dB against surrounding traffic noise from Ras Al Khor and Meydan collector road.
+
+2. STRUCTURAL SCHEME & GRID ALIGNMENT
+- Gravity & Lateral Load Resisting System: Reinforced concrete dual system with central shear core walls and perimeter columns.
+- Typical Floor Slab: 225mm thick post-tensioned flat slab system.
+- Transfer Slab: Level 1 Podium Transfer Plate (1200mm thick RC slab) transferring upper residential tower columns to 8.4m x 8.4m podium parking column grid.
+- Column alignment verified: Upper tower vertical loads align directly with shear core and transfer plate drop panels.
+- Deep Foundation: Continuous Flight Auger (CFA) bored cast-in-situ piles socketed into Dubai sandstone layer.

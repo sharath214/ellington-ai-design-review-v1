@@ -1,0 +1,30 @@
+PROJECT: ELLINGTON BUKADRA RESIDENTIAL TOWER
+LOCATION: PLOT 6117262, MEYDAN HORIZON, DUBAI, UAE
+STAGE: SCHEMATIC DESIGN — RESUBMISSION PACKAGE
+DISCIPLINE: MULTI-DISCIPLINARY CONSOLIDATED
+SUBMISSION VERSION: V2.0 (CONSULTANT RESPONSE TO DESIGN REVIEW COMMENTS)
+
+1. CONSULTANT RESPONSE TO REVIEW FINDINGS
+
+[Finding ID: DCR-SETBACK-001 - Boundary Setbacks]
+RESOLVED: Detailed setback demarcation schedule added to Sheet AR-1000 and AR-1001.
+- Front road setback confirmed at 6.0m.
+- Side setback confirmed at 4.5m with clear boundary dimensioning.
+- Rear canal setback confirmed at 5.0m.
+
+[Finding ID: AUTH-DM-PARKING-012 - Parking Provision & Ratios]
+RESOLVED: Consolidated parking schedule updated on Sheet AR-0030.
+- Total 412 residential bays provided (exceeding DM minimum requirement of 385 bays).
+- 35 dedicated visitor bays and 9 universal accessible bays clearly demarcated.
+
+[Finding ID: AUTH-DCD-EGRESS-010 - UAE Fire Code Travel Distances]
+RESOLVED: Fire & Life Safety egress analysis plans FLS-1001 through FLS-1036 updated with exact travel distance line paths.
+- Maximum single direction dead-end travel distance: 12.4m (< 15m allowable).
+- Maximum travel distance to exit stair: 26.8m (< 30m allowable).
+- DCD compliance stamp included on title blocks.
+
+[Finding ID: ELL-BRAND-PALETTE-021 - Ellington 2024 Brand Material Palette]
+RESOLVED: Material specifications sheet updated to include Ellington Signature 2024 Travertine Light Classico, Brushed Champagne Bronze aluminum framing, and Low-E acoustic glazing specifications.
+
+[Finding ID: COORD-STR-COLUMN-030 - Column Grid Continuity]
+RESOLVED: Superimposed architectural and structural overlay drawing AR-STR-OVERLAY-01 submitted confirming 100% column coordination across Podium Level 4 to Typical Floor 1 transfer zones.

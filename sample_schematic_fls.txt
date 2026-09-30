@@ -1,0 +1,26 @@
+PROJECT: ELLINGTON BUKADRA RESIDENTIAL TOWER
+LOCATION: PLOT 6117262, MEYDAN HORIZON, DUBAI, UAE
+STAGE: SCHEMATIC DESIGN
+DISCIPLINE: FIRE & LIFE SAFETY (FLS)
+SUBMISSION VERSION: V1.0
+
+1. APPLICABLE CODE BASE
+- UAE Fire & Life Safety Code of Practice 2018 (UAE Fire Code).
+- Dubai Civil Defense (DCD) Requirements for High-Rise Residential Buildings (Occupancy Class A).
+- NFPA 101 Life Safety Code (reference baseline).
+
+2. MEANS OF EGRESS & EXIT CAPACITY
+- Two independent 2-hour fire-rated exit staircases (Stair 1 and Stair 2) provided continuously from 31st Floor down to Ground level with direct discharge to exterior open space.
+- Maximum Travel Distance: Common path travel distance is 14.2m (< 15m allowed); Total travel distance to nearest exit staircase is 26.8m (< 30m maximum allowed under UAE Fire Code).
+- Exit Stair Width: 1200mm clear width with 150mm treads and 175mm risers.
+- Fire Door Specifications: 120-min fire-rated, self-closing doors with panic hardware and magnetic hold-open linked to BMS/FACP.
+
+3. SMOKE MANAGEMENT & PRESSURIZATION
+- Dedicated staircase pressurization fans providing positive pressure differential (50 Pa ± 5 Pa) in accordance with DCD guidelines.
+- Lift lobby smoke containment and pressurized firefighter emergency elevator shaft.
+
+4. FIRE SUPPRESSION & DETECTION
+- Automatic wet-pipe sprinkler system throughout all residential units, corridors, basements, and podium parking (NFPA 13 compliant).
+- Class I Standpipe system with landing valves located in all exit stairwell landings.
+- Fire water reserve: 45,000 Gallon dedicated fire storage tank with UL/FM certified electric, diesel, and jockey pumps.
+- DCD 24x7 Direct Alarm Monitoring connectivity hub located in Ground Floor Fire Control Room.
