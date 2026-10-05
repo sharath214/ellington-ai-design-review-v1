@@ -287,12 +287,22 @@ def snippet(text: str, keyword: str, window: int = 140) -> str:
         return ''
     start = max(0, m.start() - window)
     end = min(len(text), m.end() + window)
+    
+    # Snap to nearest word boundary instead of cutting words in half
+    if start > 0:
+        next_space = text.find(' ', start)
+        if next_space != -1 and next_space < m.start():
+            start = next_space + 1
+            
+    if end < len(text):
+        last_space = text.rfind(' ', m.end(), end)
+        if last_space != -1:
+            end = last_space
+            
     s = re.sub(r'\s+', ' ', text[start:end]).strip()
-    return ('…' if start else '') + s + ('…' if end < len(text) else '')
+    s = re.sub(r'^[.…\s\-•–—,;:]+', '', s).strip()
+    return s
 
-# ---------------------------------------------------------
-# Stream A: AI First-Pass Review Engine
-# ---------------------------------------------------------
 def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENSIVE_RULES) -> List[Dict[str, Any]]:
     t = text.lower() if text else ""
     results = []

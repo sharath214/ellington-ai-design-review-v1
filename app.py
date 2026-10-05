@@ -590,10 +590,12 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             if not st.session_state['stream_a_findings']:
                 st.info("Run AI First-Pass Review above to populate Stream A findings.")
             else:
-                # Ensure ta_comment is blank by default unless explicitly entered by TA
+                # Ensure ta_comment is blank by default and strip any leading dots from evidence
                 for item in st.session_state['stream_a_findings']:
                     if 'ta_comment' not in item or item.get('ta_comment') == item.get('consultant_comment'):
                         item['ta_comment'] = ''
+                    if 'evidence_text' in item and item['evidence_text']:
+                        item['evidence_text'] = re.sub(r'^[.…\s\-•–—]+', '', str(item['evidence_text'])).strip()
                 
                 df_a = pd.DataFrame(st.session_state['stream_a_findings'])
                 
@@ -617,11 +619,23 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     df_a,
                     use_container_width=True,
                     hide_index=True,
+                    column_order=[
+                        'id',
+                        'drawing_ref',
+                        'category',
+                        'reference_source',
+                        'evidence_text',
+                        'consultant_comment',
+                        'action_key',
+                        'ta_comment'
+                    ],
                     column_config={
                         'id': st.column_config.TextColumn('Finding ID', width='small', disabled=True),
                         'drawing_ref': st.column_config.TextColumn('Drawing Ref', width='small', disabled=True),
                         'category': st.column_config.TextColumn('Category', width='medium', disabled=True),
                         'reference_source': st.column_config.TextColumn('Authority / DCR Source', width='medium', disabled=True),
+                        'evidence_text': st.column_config.TextColumn('Extracted Drawing Evidence', width='large', disabled=True),
+                        'consultant_comment': st.column_config.TextColumn('AI Comments / Proposed Action', width='large', disabled=True),
                         'action_key': st.column_config.SelectboxColumn('Ellington Action Key *', options=ELLINGTON_ACTION_KEYS, width='medium', required=True),
                         'ta_comment': st.column_config.TextColumn('TA Review Comments (Mandatory if Closing)', width='large'),
                     },
