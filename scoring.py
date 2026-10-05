@@ -4,6 +4,12 @@ Implements transparent, weighted point deductions strictly on confirmed/finalize
 """
 
 from typing import List, Dict, Any, Tuple
+import sys
+from pathlib import Path
+_APP_ROOT = str(Path(__file__).resolve().parent)
+if _APP_ROOT not in sys.path:
+    sys.path.insert(0, _APP_ROOT)
+
 from config import DEFAULT_SCORING_CONFIG
 
 def calculate_dynamic_compliance_score(

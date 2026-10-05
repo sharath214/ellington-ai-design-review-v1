@@ -16,6 +16,15 @@ try:
 except Exception:
     Document = None
 
+import sys
+import os
+from pathlib import Path
+
+# Ensure application root directory is always on Python path (critical for Streamlit Community Cloud)
+_APP_ROOT = str(Path(__file__).resolve().parent)
+if _APP_ROOT not in sys.path:
+    sys.path.insert(0, _APP_ROOT)
+
 # Import V1 modular engines & configs
 from config import (
     ROLE_TECHNICAL_ARCHITECT,
