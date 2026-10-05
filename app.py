@@ -590,10 +590,10 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             if not st.session_state['stream_a_findings']:
                 st.info("Run AI First-Pass Review above to populate Stream A findings.")
             else:
-                # Ensure ta_comment is populated
+                # Ensure ta_comment is blank by default unless explicitly entered by TA
                 for item in st.session_state['stream_a_findings']:
-                    if 'ta_comment' not in item or not item['ta_comment']:
-                        item['ta_comment'] = item.get('consultant_comment') or item.get('finding_text', '')
+                    if 'ta_comment' not in item or item.get('ta_comment') == item.get('consultant_comment'):
+                        item['ta_comment'] = ''
                 
                 df_a = pd.DataFrame(st.session_state['stream_a_findings'])
                 
@@ -609,7 +609,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
 
                 st.markdown("""
                 <div class='human-box'>
-                    <b>Technical Architect Governance:</b> Assign the Ellington Action Key (1-Open, 2-Pending, 3-Closed). Only Action 1 and 2 will require consultant response.
+                    <b>Technical Architect Governance:</b> Assign the Ellington Action Key (1-Open, 2-Pending, 3-Closed). <b>Mandatory Rule:</b> When closing a finding (<b>Action 3 - CLOSED</b>), entering <b>TA Review Comments</b> is mandatory to record the closure justification.
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -623,33 +623,47 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         'category': st.column_config.TextColumn('Category', width='medium', disabled=True),
                         'reference_source': st.column_config.TextColumn('Authority / DCR Source', width='medium', disabled=True),
                         'action_key': st.column_config.SelectboxColumn('Ellington Action Key *', options=ELLINGTON_ACTION_KEYS, width='medium', required=True),
-                        'ta_comment': st.column_config.TextColumn('TA Review Comments', width='large'),
+                        'ta_comment': st.column_config.TextColumn('TA Review Comments (Mandatory if Closing)', width='large'),
                     },
                     key="editor_stream_a_v1"
                 )
                 
                 if st.button("💾 Save Stream A Decisions & Action Keys", key="save_stream_a_btn", type="primary"):
                     records = edited_a.to_dict('records')
+                    
+                    # Validate: If TA is closing the gap (Action 3 - CLOSED), TA review comment is mandatory!
+                    unjustified_closed = []
                     for r in records:
-                        if 'ta_comment' in r:
-                            r['consultant_comment'] = r['ta_comment']
-                        # Synchronize status with Action Key (Action 1/2 are active issues, Action 3 is closed)
-                        if str(r.get('action_key', '')).startswith('3'):
-                            r['status'] = 'Closed'
-                            r['reviewer_decision'] = 'Dismiss Issue'
-                        else:
-                            r['status'] = 'Confirm Issue'
-                            r['reviewer_decision'] = 'Confirm Issue'
-                    st.session_state['stream_a_findings'] = records
-                    log_audit_event(
-                        action="Stream A Action Keys Updated",
-                        user="Technical Architect",
-                        role="Technical Architect",
-                        review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                        details="TA updated Action Keys per Ellington spreadsheet standard."
-                    )
-                    st.success("Decisions saved successfully!")
-                    st.rerun()
+                        is_closed = str(r.get('action_key', '')).startswith('3')
+                        ta_c = str(r.get('ta_comment') or '').strip()
+                        if is_closed and not ta_c:
+                            unjustified_closed.append(r.get('id', 'Unknown'))
+                            
+                    if unjustified_closed:
+                        st.error(f"⚠️ **Mandatory Review Comments Required**: When closing a gap (**Action 3 - CLOSED**), TA Review Comments cannot be blank. Please enter review comments / closure justification for: {', '.join(f'`{x}`' for x in unjustified_closed)}.")
+                    else:
+                        for r in records:
+                            ta_c = str(r.get('ta_comment') or '').strip()
+                            r['ta_comment'] = ta_c
+                            if ta_c:
+                                r['consultant_comment'] = ta_c
+                            # Synchronize status with Action Key (Action 1/2 are active issues, Action 3 is closed)
+                            if str(r.get('action_key', '')).startswith('3'):
+                                r['status'] = 'Closed'
+                                r['reviewer_decision'] = 'Dismiss Issue'
+                            else:
+                                r['status'] = 'Confirm Issue'
+                                r['reviewer_decision'] = 'Confirm Issue'
+                        st.session_state['stream_a_findings'] = records
+                        log_audit_event(
+                            action="Stream A Action Keys Updated",
+                            user="Technical Architect",
+                            role="Technical Architect",
+                            review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
+                            details="TA updated Action Keys per Ellington spreadsheet standard."
+                        )
+                        st.success("Decisions saved successfully!")
+                        st.rerun()
 
         # -------------------------------------------------
         # TAB 2: My Findings (Stream B - Manual TA Review)

@@ -348,7 +348,7 @@ def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENS
             'cost_delta': rule.get('cost_delta', 0),
             'schedule_delta': rule.get('schedule_delta', '0 wks'),
             'attachments': [],
-            'ta_comment': consultant_comm
+            'ta_comment': ''
         })
     return results
 
