@@ -171,16 +171,26 @@ def lock_and_issue_cycle_package(
     submittal_version: str,
     finalized_findings: List[Dict[str, Any]],
     compliance_score: int,
-    issued_by: str = "Technical Architect"
+    issued_by: str = "Technical Architect",
+    submittal_text: str = "",
+    submittal_filename: str = ""
 ) -> Dict[str, Any]:
     """
     Creates an immutable frozen snapshot of the review cycle.
     Separates internal audit data from consultant-visible payload.
+    Stores the submittal design document/drawings for consultant inspection.
     """
     cycles = load_review_cycles()
     cycle_id = f"CYCLE-{cycle_num}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
+    # If submittal_text is missing, fall back to sample schematic text
+    if not submittal_text:
+        sample_path = BASE_DIR / "sample_schematic_arch.txt"
+        if sample_path.exists():
+            submittal_text = sample_path.read_text(encoding='utf-8')
+            submittal_filename = submittal_filename or "015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt"
+
     # Filter and format consultant visible items
     consultant_items = []
     for item in finalized_findings:
@@ -222,6 +232,8 @@ def lock_and_issue_cycle_package(
         'stage': stage,
         'discipline': discipline,
         'submittal_version': submittal_version,
+        'submittal_filename': submittal_filename or "Submittal_Drawing_Package_V1.txt",
+        'submittal_text': submittal_text,
         'issued_at': now_str,
         'issued_by': issued_by,
         'is_locked': True,

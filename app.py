@@ -46,7 +46,8 @@ from storage_manager import (
     get_active_or_latest_cycle,
     lock_and_issue_cycle_package,
     save_uploaded_file,
-    BASE_DIR
+    BASE_DIR,
+    UPLOADS_DIR
 )
 from rule_engine import (
     COMPREHENSIVE_RULES,
@@ -131,57 +132,12 @@ st.markdown("""
         background: #F8FAFC;
         border: 1px solid #CBD5E1;
         border-left: 5px solid #0B315E;
-        padding: 10px 16px;
-        border-radius: 6px;
-        margin-bottom: 16px;
+        padding: 12px 18px;
+        border-radius: 8px;
+        margin-bottom: 18px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-    }
-    
-    /* Process Bar */
-    .process-container {
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 10px 16px;
-        margin-bottom: 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-    
-    .process-step {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: #475569;
-    }
-    
-    .process-step.active {
-        color: #0B315E;
-        font-weight: 700;
-    }
-    
-    .step-num {
-        background: #E2E8F0;
-        color: #334155;
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.7rem;
-    }
-    
-    .process-step.active .step-num {
-        background: #0B315E;
-        color: #FFFFFF;
     }
     
     /* Metric Cards */
@@ -247,6 +203,16 @@ st.markdown("""
         color: #991B1B;
         font-size: 0.86rem;
         margin: 12px 0;
+    }
+    
+    .gap-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        transition: transform 0.1s ease;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -315,7 +281,7 @@ with st.sidebar:
         ROLES,
         index=ROLES.index(st.session_state['active_role']),
         key="role_selector",
-        help="Switch between Technical Architect (internal authorization) and Lead Design Consultant (external resubmission)."
+        help="Switch between Technical Architect (internal authorization) and Lead Design Consultant (external review & resubmission)."
     )
     if selected_role != st.session_state['active_role']:
         st.session_state['active_role'] = selected_role
@@ -338,9 +304,8 @@ with st.sidebar:
         active_page = st.radio("TA Navigation", TA_PAGES, key="ta_nav", label_visibility="collapsed")
     else:
         CONS_PAGES = [
-            "📋 Issued Comments Register",
-            "💬 Submit Responses & Contestations",
-            "📤 Upload Revised Submittal (V2.0+)",
+            "📋 Review Register & Gap Responses",
+            "📤 Submit Formal Resubmission (V2.0+)",
             "📜 Consultant Review History"
         ]
         if 'cons_nav' not in st.session_state or st.session_state['cons_nav'] not in CONS_PAGES:
@@ -350,7 +315,7 @@ with st.sidebar:
     st.divider()
     st.markdown(f"**Current Milestone:** `{st.session_state['stage']}`")
     st.markdown(f"**Review Cycle:** `Cycle {st.session_state['current_cycle_num']}`")
-    st.caption("🔒 **Human Authority Gate: Strictly Enforced**")
+    st.caption("🔒 **Human Authority Gate: Active**")
 
 # =========================================================
 # TECHNICAL ARCHITECT WORKSPACE
@@ -563,7 +528,6 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     key="editor_stream_a_v1"
                 )
                 
-                # Check for changes and log audit
                 if st.button("💾 Save Stream A Review Decisions", key="save_stream_a_btn", type="primary"):
                     st.session_state['stream_a_findings'] = edited_a.to_dict('records')
                     log_audit_event(
@@ -900,6 +864,9 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                 )
             with lock_col2:
                 if st.button("📤 Finalize & Issue to Consultant (Lock Cycle 1)", type="primary", disabled=not confirm_lock or not all_finalized, use_container_width=True):
+                    raw_submittal = st.session_state.get('raw_submittal_text', '')
+                    submittal_name = st.session_state.get('submittal_filename', '015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt')
+                    
                     cycle_rec = lock_and_issue_cycle_package(
                         project=st.session_state['project'],
                         stage=st.session_state['stage'],
@@ -908,7 +875,9 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         submittal_version=st.session_state.get('submittal_ver', 'V1.0'),
                         finalized_findings=all_finalized,
                         compliance_score=score,
-                        issued_by="Technical Architect"
+                        issued_by="Technical Architect",
+                        submittal_text=raw_submittal,
+                        submittal_filename=submittal_name
                     )
                     st.session_state['active_cycle_record'] = cycle_rec
                     st.success(f"🎉 Review Cycle {st.session_state['current_cycle_num']} is now LOCKED and officially ISSUED to the Consultant!")
@@ -1162,14 +1131,14 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         """)
 
 # =========================================================
-# CONSULTANT WORKSPACE (STRICTLY ISOLATED)
+# CONSULTANT WORKSPACE (STRICTLY ISOLATED & EMPOWERED)
 # =========================================================
 else:
     st.markdown("""
     <div class='role-banner'>
         <div>
-            <span style='font-size: 1.1rem; font-weight: 700; color: #0B315E;'>Lead Design Consultant Portal</span>
-            <span style='background: #0284C7; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; margin-left: 8px;'>EXTERNAL ACCESS</span>
+            <span style='font-size: 1.15rem; font-weight: 700; color: #0B315E;'>Lead Design Consultant Collaboration Portal</span>
+            <span style='background: #0284C7; color: white; padding: 3px 10px; border-radius: 5px; font-size: 0.72rem; font-weight: 700; margin-left: 8px;'>EXTERNAL ACCESS</span>
         </div>
         <div style='font-size: 0.85rem; color: #64748B;'>
             Authorized Submittal Partner: <b>Lead Architectural & Engineering Consultant</b>
@@ -1180,114 +1149,265 @@ else:
     cycle_rec = get_active_or_latest_cycle(st.session_state['project'], st.session_state['stage'])
 
     if not cycle_rec:
-        st.info("ℹ️ No official review comments have been issued to the Consultant yet. The Technical Architect is currently reviewing the package.")
+        st.info("ℹ️ No official review comments have been issued to the Consultant yet. The Technical Architect is currently reviewing the submittal package.")
     else:
-        # Consultant Navigation
         cons_items = cycle_rec.get('consultant_package', [])
 
-        if active_page == "📋 Issued Comments Register":
-            st.markdown(f"### Official Review Register — `{cycle_rec['cycle_id']}`")
-            st.caption(f"Issued on: **{cycle_rec['issued_at']}** by **{cycle_rec['issued_by']}** | Status: **{cycle_rec['status']}**")
+        # -------------------------------------------------
+        # TOP CARD: View Design Package & Documents uploaded by TA
+        # -------------------------------------------------
+        pkg_name = cycle_rec.get('submittal_filename', '015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt')
+        pkg_text = cycle_rec.get('submittal_text', '')
+        if not pkg_text:
+            sample_p = BASE_DIR / "sample_schematic_arch.txt"
+            pkg_text = sample_p.read_text(encoding='utf-8') if sample_p.exists() else ""
 
-            st.markdown("""
-            <div class='client-box'>
-                <b>Official Consultant Notice:</b> The comments below represent authorized review items from Ellington Properties. Review each item and submit your formal responses and revised drawings in the <b>'Submit Responses & Contestations'</b> tab.
+        with st.container():
+            st.markdown(f"""
+            <div style='background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 5px solid #D4AF37; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;'>
+                <div style='display: flex; justify-content: space-between; align-items: center;'>
+                    <div>
+                        <div style='font-size: 1.1rem; font-weight: 700; color: #0F172A; font-family: Outfit, sans-serif;'>
+                            📂 Submittal Design Package & Reference Drawings
+                        </div>
+                        <div style='font-size: 0.84rem; color: #64748B; margin-top: 4px;'>
+                            <b>Project:</b> {cycle_rec['project']} &nbsp;|&nbsp; 
+                            <b>Milestone:</b> {cycle_rec['stage']} &nbsp;|&nbsp; 
+                            <b>Review Cycle:</b> <span style='background:#E0E7FF; color:#3730A3; padding:2px 6px; border-radius:4px; font-weight:bold;'>{cycle_rec['cycle_id']}</span> &nbsp;|&nbsp;
+                            <b>Package:</b> `{pkg_name}`
+                        </div>
+                    </div>
+                    <span style='background: #10B981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;'>
+                        LOCKED REVIEW CYCLE
+                    </span>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Display Consultant Items
-            display_rows = []
-            for it in cons_items:
-                display_rows.append({
-                    'Item ID': it['finding_id'],
-                    'Source': it['source_display'],
-                    'Drawing Ref': it['drawing_ref'],
-                    'Category': it['category'],
-                    'Severity': it['severity'],
-                    'Action Required': it['comment'],
-                    'Attachments': len(it.get('attachments', [])),
-                    'Response Status': it.get('response', {}).get('response_type', 'Pending Response')
-                })
-            st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
+            d_c1, d_c2 = st.columns([1, 1])
+            with d_c1:
+                with st.expander("👁️ View Full Drawing Package Text, Annotations & Schedules", expanded=False):
+                    st.text(pkg_text[:12000] + ("\n... [Truncated for preview]" if len(pkg_text) > 12000 else ""))
+            with d_c2:
+                st.download_button(
+                    label="📥 Download Submittal Drawing Package (TXT)",
+                    data=pkg_text,
+                    file_name=pkg_name,
+                    mime="text/plain",
+                    use_container_width=True
+                )
 
-        elif active_page == "💬 Submit Responses & Contestations":
-            st.markdown(f"### Consultant Response Form — `{cycle_rec['cycle_id']}`")
-            st.caption("Respond to each comment individually. You may Accept/Rectify, Request Clarification, Contest the finding, or Request an Exception.")
+        # -------------------------------------------------
+        # VIEW 1: Review Register & Gap Responses (Combined & Empowered)
+        # -------------------------------------------------
+        if active_page == "📋 Review Register & Gap Responses":
+            st.markdown("### Official Review Comments & Consultant Response Actions")
+            st.markdown("""
+            <div class='client-box'>
+                <b>Action Required for Each Gap:</b> Review each item below. Select your formal response (<b>Accept / Will Rectify</b>, <b>Clarification Requested</b>, <b>Contest Finding</b>, or <b>Exception Requested</b>), provide your response explanation, and <b>upload your supporting revised drawings/documents</b>.
+            </div>
+            """, unsafe_allow_html=True)
 
+            # Metrics
+            total_gaps = len(cons_items)
+            responded_count = sum(1 for it in cons_items if it.get('response', {}).get('response_type') not in ['Pending Response', '', None])
+            pending_count = total_gaps - responded_count
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Review Comments", total_gaps)
+            m2.metric("Responses Recorded", responded_count, delta="Completed" if responded_count == total_gaps else None)
+            m3.metric("Pending Responses", pending_count, delta="Action Needed" if pending_count > 0 else "All Set", delta_color="inverse")
+
+            st.divider()
+
+            # Iterate through each gap with interactive response and document upload
             for idx, it in enumerate(cons_items):
-                with st.expander(f"📌 {it['finding_id']} — {it['drawing_ref']} ({it['category']})", expanded=True):
-                    st.markdown(f"**Ellington Review Comment:** {it['comment']}")
-                    st.markdown(f"**Severity:** `{it['severity']}` | **Reference Source:** {it.get('reference_source', '—')}")
-                    
-                    if it.get('attachments'):
-                        st.markdown(f"📎 **Ellington Attachments:** {', '.join([a['filename'] for a in it['attachments']])}")
+                fid = it['finding_id']
+                cat = it['category']
+                dwg = it['drawing_ref']
+                sev = it['severity']
+                src = it['source_display']
+                comment = it['comment']
+                curr_resp = it.get('response', {})
+                resp_status = curr_resp.get('response_type', 'Pending Response')
+                is_responded = resp_status != 'Pending Response'
 
-                    current_resp = it.get('response', {})
-                    r_type = current_resp.get('response_type', 'Pending Response')
-                    r_type_idx = CONSULTANT_RESPONSE_OPTIONS.index(r_type) if r_type in CONSULTANT_RESPONSE_OPTIONS else 0
+                status_badge = "✅ Response Saved" if is_responded else "⏳ Pending Action"
+                badge_bg = "#ECFDF5" if is_responded else "#FFFBEB"
+                badge_color = "#047857" if is_responded else "#B45309"
 
-                    c_col1, c_col2 = st.columns([1, 1.5])
-                    with c_col1:
-                        new_r_type = st.selectbox("Action / Response Type", CONSULTANT_RESPONSE_OPTIONS, index=r_type_idx, key=f"resp_type_{idx}")
-                        rev_dwg = st.text_input("Revised Drawing / Sheet Reference", value=current_resp.get('revised_drawing_ref', ''), key=f"rev_dwg_{idx}", placeholder="e.g. Revised on Sheet AR-1001 Rev B")
-                    with c_col2:
-                        resp_note = st.text_area("Consultant Explanation / Response Note", value=current_resp.get('response_note', ''), key=f"resp_note_{idx}", placeholder="e.g. Setback dimensions updated to 6.0m per DCR. See Sheet AR-1001.")
+                with st.container():
+                    st.markdown(f"""
+                    <div class='gap-card' style='border-left: 5px solid {("#10B981" if is_responded else "#F59E0B")};'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <span style='font-size: 1.15rem; font-weight: 800; color: #0F172A;'>Item #{idx+1}: `{fid}`</span>
+                                <span style='margin-left: 10px; background: #E0E7FF; color: #3730A3; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;'>{src}</span>
+                                <span style='margin-left: 6px; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;'>Severity: {sev}</span>
+                            </div>
+                            <span style='background: {badge_bg}; color: {badge_color}; padding: 4px 12px; border-radius: 6px; font-size: 0.80rem; font-weight: 700;'>
+                                {status_badge} ({resp_status})
+                            </span>
+                        </div>
+                        <div style='margin-top: 10px; font-size: 0.92rem; color: #334155;'>
+                            <b>Drawing / Sheet Reference:</b> <code>{dwg}</code> &nbsp;|&nbsp; <b>Category:</b> {cat}
+                        </div>
+                        <div style='margin-top: 8px; font-size: 0.95rem; color: #0F172A; background: #F1F5F9; padding: 12px 16px; border-radius: 6px;'>
+                            <b>Ellington Required Action:</b><br>{comment}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                    if st.button("💾 Save Item Response", key=f"save_resp_{idx}"):
-                        it['response'] = {
-                            'response_type': new_r_type,
-                            'response_note': resp_note,
-                            'revised_drawing_ref': rev_dwg,
-                            'responded_at': datetime.now().strftime("%Y-%m-%d %H:%M")
-                        }
-                        cycles = load_review_cycles()
-                        for c in cycles:
-                            if c.get('cycle_id') == cycle_rec['cycle_id']:
-                                c['consultant_package'] = cons_items
-                                break
-                        save_review_cycles(cycles)
-                        log_audit_event(
-                            action=f"Consultant Responded to {it['finding_id']}",
-                            user="Lead Design Consultant",
-                            role="Consultant",
-                            finding_id=it['finding_id'],
-                            review_cycle=cycle_rec['cycle_id'],
-                            new_value=new_r_type,
-                            details=f"Response Note: '{resp_note}'"
+                    # Display TA attachments for this item if any
+                    ta_atts = it.get('attachments', [])
+                    if ta_atts:
+                        st.markdown(f"**📎 Technical Architect Attachments ({len(ta_atts)} file/sketch):**")
+                        for a_idx, att in enumerate(ta_atts):
+                            att_path = Path(att.get('stored_path', ''))
+                            a_col1, a_col2 = st.columns([2, 1])
+                            with a_col1:
+                                st.caption(f"📄 **{att.get('file_type', 'File')}:** `{att.get('filename')}` ({att.get('size_display', '')})")
+                                if att_path.exists() and att_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                                    st.image(str(att_path), caption=f"TA Attachment: {att.get('filename')}", use_container_width=True)
+                            with a_col2:
+                                if att_path.exists():
+                                    st.download_button(
+                                        f"📥 Download {att.get('filename')}",
+                                        att_path.read_bytes(),
+                                        file_name=att.get('filename'),
+                                        key=f"dl_ta_att_{idx}_{a_idx}",
+                                        use_container_width=True
+                                    )
+
+                    # Interactive Response and File Upload specifically for this Gap
+                    with st.expander(f"✍️ Update Consultant Response & Upload Revised Drawing for `{fid}`", expanded=not is_responded):
+                        c1, c2 = st.columns([1, 1.2])
+                        with c1:
+                            r_type_idx = CONSULTANT_RESPONSE_OPTIONS.index(resp_status) if resp_status in CONSULTANT_RESPONSE_OPTIONS else 1
+                            new_r_type = st.selectbox(
+                                "Your Response / Action Type *",
+                                CONSULTANT_RESPONSE_OPTIONS[1:],  # exclude 'Pending Response'
+                                index=r_type_idx - 1 if r_type_idx > 0 else 0,
+                                key=f"resp_type_sel_{idx}"
+                            )
+                            rev_dwg = st.text_input(
+                                "Revised Drawing / Sheet Reference *",
+                                value=curr_resp.get('revised_drawing_ref', dwg + " Rev B"),
+                                key=f"rev_dwg_input_{idx}",
+                                placeholder="e.g. Revised on Sheet AR-1001 Rev B"
+                            )
+                        with c2:
+                            resp_note = st.text_area(
+                                "Consultant Explanation / Technical Justification *",
+                                value=curr_resp.get('response_note', ''),
+                                key=f"resp_note_input_{idx}",
+                                placeholder="e.g. Dimensions confirmed and revised on Sheet AR-1001 per Meydan Horizon 6.0m road setback requirement."
+                            )
+
+                        # Document or Drawing Upload specifically for this gap
+                        st.markdown("##### 📎 Upload Supporting Document / Drawing for this Gap")
+                        u_col1, u_col2 = st.columns([1.5, 1])
+                        cons_gap_file = u_col1.file_uploader(
+                            f"Upload PDF / PNG / JPG / DWG for {fid}",
+                            type=['pdf', 'png', 'jpg', 'jpeg', 'txt'],
+                            key=f"cons_file_{idx}"
                         )
-                        st.success(f"Response saved for `{it['finding_id']}`!")
+                        cons_file_desc = u_col2.text_input("Drawing / Document Title", value=f"Revised_{fid}", key=f"cons_file_desc_{idx}")
 
-        elif active_page == "📤 Upload Revised Submittal (V2.0+)":
-            st.markdown(f"### Formal Resubmission Package — `{cycle_rec['cycle_id']}`")
-            st.caption("Upload your revised drawings, cover letter, and response schedules for Technical Architect delta evaluation.")
+                        # Save Button
+                        if st.button(f"💾 Save & Submit Response for {fid}", key=f"save_btn_{idx}", type="primary"):
+                            resp_atts = curr_resp.get('attachments', [])
+                            if cons_gap_file:
+                                att_res = save_uploaded_file(cons_gap_file, "Consultant Revised Drawing", "Consultant Visible", uploaded_by="Lead Design Consultant")
+                                resp_atts.append(att_res)
 
-            with st.form("consultant_resub_form"):
-                resub_pkg_ver = st.text_input("Resubmission Package Version", "V2.0")
-                cover_note = st.text_area("Consultant Resubmission Cover Letter / Executive Summary", placeholder="e.g. We submit herewith Revision B of the Schematic Design package incorporating all Ellington design comments...")
+                            it['response'] = {
+                                'response_type': new_r_type,
+                                'response_note': resp_note or "Revision acknowledged and incorporated.",
+                                'revised_drawing_ref': rev_dwg,
+                                'attachments': resp_atts,
+                                'responded_at': datetime.now().strftime("%Y-%m-%d %H:%M")
+                            }
+
+                            # Persist to review_cycles.json
+                            cycles = load_review_cycles()
+                            for c in cycles:
+                                if c.get('cycle_id') == cycle_rec['cycle_id']:
+                                    c['consultant_package'] = cons_items
+                                    break
+                            save_review_cycles(cycles)
+
+                            log_audit_event(
+                                action=f"Consultant Logged Response for {fid}",
+                                user="Lead Design Consultant",
+                                role="Consultant",
+                                finding_id=fid,
+                                review_cycle=cycle_rec['cycle_id'],
+                                new_value=new_r_type,
+                                details=f"Note: '{resp_note}'. Uploaded: {cons_gap_file.name if cons_gap_file else 'None'}."
+                            )
+                            st.success(f"🎉 Response and documents recorded successfully for `{fid}`!")
+                            st.rerun()
+
+                        # Display existing uploaded consultant documents for this item
+                        if curr_resp.get('attachments'):
+                            st.markdown(f"**Uploaded Consultant Files for this item:**")
+                            for c_att in curr_resp.get('attachments', []):
+                                st.info(f"📄 `{c_att.get('filename')}` ({c_att.get('size_display')}) — Uploaded at {c_att.get('timestamp')}")
+
+                    st.divider()
+
+        # -------------------------------------------------
+        # VIEW 2: Formal Resubmission Package Submission (V2.0+)
+        # -------------------------------------------------
+        elif active_page == "📤 Submit Formal Resubmission (V2.0+)":
+            st.markdown(f"### Formal Package Resubmission — `{cycle_rec['cycle_id']}`")
+            st.caption("Once you have updated your comments for all gaps, submit your complete revised submittal package (V2.0+) to notify the Technical Architect.")
+
+            st.markdown("""
+            <div class='notice-box'>
+                <b>Milestone Step:</b> Submitting this package notifies Ellington Technical Architects to execute the <b>AI Delta Review</b> and compare your V2.0 submittal against the original comments.
+            </div>
+            """, unsafe_allow_html=True)
+
+            with st.form("formal_resub_form"):
+                pkg_ver = st.text_input("Submittal Revision Version", "V2.0")
+                cover_summary = st.text_area(
+                    "Executive Cover Letter / Transmittal Summary",
+                    value="We submit herewith Revision B (V2.0) of the Schematic Design package incorporating all Ellington design comments, dimensioned setbacks, updated parking allocations, and fire egress analysis.",
+                    height=120
+                )
+
+                st.markdown("##### 📁 Upload Complete Revised Design Package (Drawings & Specifications)")
+                c_up1, c_up2 = st.columns([1.5, 1])
+                rev_package_file = c_up1.file_uploader("Upload Master Revised PDF / TXT / DOCX Package", type=['pdf', 'txt', 'docx'], key="master_v2_upload")
                 
-                up_resub = st.file_uploader("Upload Revised Package Drawings / Specs (PDF / DOCX / TXT)", type=['pdf', 'docx', 'txt'])
-                
-                submitted_resub = st.form_submit_button("🚀 Submit Revised Package to Ellington", type="primary", use_container_width=True)
-                if submitted_resub:
+                quick_sample = c_up2.checkbox("Or use pre-indexed Bukadra V2.0 Sample Resubmission", value=True)
+
+                submitted_master = st.form_submit_button("🚀 Submit Formal Resubmission Package to Ellington", type="primary", use_container_width=True)
+                if submitted_master:
                     upsert_stage_status(
                         project=cycle_rec['project'],
                         stage=cycle_rec['stage'],
                         discipline=cycle_rec['discipline'],
                         status='Resubmission Received',
                         reviewer='Lead Design Consultant',
-                        note=cover_note
+                        note=cover_summary
                     )
                     log_audit_event(
-                        action=f"Consultant Resubmission Submitted ({resub_pkg_ver})",
+                        action=f"Consultant Resubmission Package {pkg_ver} Submitted",
                         user="Lead Design Consultant",
                         role="Consultant",
                         review_cycle=cycle_rec['cycle_id'],
                         previous_value="Issued to Consultant",
-                        new_value=f"Resubmission {resub_pkg_ver} Ingested",
-                        details=f"Cover Summary: '{cover_note[:100]}...'"
+                        new_value=f"Resubmission {pkg_ver} Received",
+                        details=f"Cover Letter: '{cover_summary[:120]}...'"
                     )
-                    st.success(f"🎉 Resubmission package {resub_pkg_ver} submitted successfully! The Technical Architect has been notified to execute the AI Delta Review.")
+                    st.success(f"🎉 Resubmission Package {pkg_ver} successfully submitted to Ellington! Technical Architect has been alerted for AI Delta Review.")
 
+        # -------------------------------------------------
+        # VIEW 3: Historical Review Cycles
+        # -------------------------------------------------
         elif active_page == "📜 Consultant Review History":
             st.markdown("### Historical Review Cycle Submittals")
             cycles = load_review_cycles()
@@ -1296,5 +1416,6 @@ else:
             else:
                 for c in cycles:
                     with st.expander(f"📁 {c['cycle_id']} — {c['stage']} ({c['issued_at']})", expanded=True):
+                        st.markdown(f"**Project:** {c['project']} | **Discipline:** {c['discipline']}")
                         st.markdown(f"**Submittal Version:** {c['submittal_version']} | **Status:** {c['status']}")
                         st.markdown(f"**Total Review Comments:** {c['total_findings']}")
