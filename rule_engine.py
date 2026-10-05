@@ -1,7 +1,7 @@
 """
 Rule Engine and AI Advisory Intelligence for Ellington AI Design Review Management System V1.
 Covers:
-1. Multi-discipline compliance rules (DCR, Authority, Brand, Cross-Discipline)
+1. Multi-discipline compliance rules with verified Meydan Horizon & Dubai Municipality DCR sources
 2. Stream A: AI First-Pass Review engine
 3. Stream B: Point-in-time AI Review of Technical Architect findings (10-point advisory check)
 4. AI Delta Review engine for revised submissions (V1 vs V2)
@@ -11,14 +11,14 @@ import re
 from typing import List, Dict, Any, Optional
 
 # ---------------------------------------------------------
-# 17 Multi-Discipline Rule Catalogue
+# 17 Multi-Discipline Rule Catalogue (Aligned with Client Guidelines)
 # ---------------------------------------------------------
 COMPREHENSIVE_RULES = [
-    # 1. DCR & Planning
+    # 1. DCR & Planning (Meydan Horizon Vol II & Plot Guidelines)
     {
         'id': 'DCR-SETBACK-001',
         'pillar': 'Development Regulations (DCR)',
-        'source': 'Meydan Horizon / Master Plan DCR',
+        'source': 'Meydan Horizon DCR Vol II (5. DG Horizon 21023 Rev01 & SKONICA_SCA24070313070.pdf, pg 6)',
         'category': 'Boundary Setbacks',
         'discipline': 'Architecture & Planning',
         'severity': 'High',
@@ -26,14 +26,14 @@ COMPREHENSIVE_RULES = [
         'keywords': ['setback', 'boundary', 'property line', 'buffer', 'road setback'],
         'expected': 'Explicit front, rear, and side setback dimensions matching master development regulations.',
         'issue_if_missing': True,
-        'standard_clause': 'DCR Cl. 4.2: Minimum 6.0m road setback and 4.5m side plot setbacks required.',
+        'standard_clause': 'Meydan Horizon DCR Cl. 4.2: Minimum 6.0m road setback and 4.5m side plot setbacks required.',
         'cost_delta': 0,
         'schedule_delta': '1.0 week'
     },
     {
         'id': 'DCR-PLOTCOV-002',
         'pillar': 'Development Regulations (DCR)',
-        'source': 'Development Control Regulations',
+        'source': 'Meydan Horizon DCR Vol II (5. DG Horizon 21023 Rev01 & SKONICA_SCA24070313070.pdf, pg 6)',
         'category': 'Plot Coverage & Footprint',
         'discipline': 'Architecture & Planning',
         'severity': 'Medium',
@@ -41,14 +41,14 @@ COMPREHENSIVE_RULES = [
         'keywords': ['plot coverage', 'footprint', 'podium coverage', 'coverage ratio'],
         'expected': 'Plot coverage calculations verifying podium and tower footprints comply with master limit (<= 70%).',
         'issue_if_missing': True,
-        'standard_clause': 'DCR Cl. 5.1: Maximum podium plot coverage shall not exceed 70% of total plot area.',
+        'standard_clause': 'Meydan Horizon DCR Cl. 5.1: Maximum podium plot coverage shall not exceed 70% of total plot area.',
         'cost_delta': 0,
         'schedule_delta': '0.5 weeks'
     },
     {
         'id': 'DCR-HEIGHT-003',
         'pillar': 'Development Regulations (DCR)',
-        'source': 'Master Development Control Regulations',
+        'source': 'Meydan Horizon Master Plan (SKONICA_SCA24070313070.pdf, pg 6)',
         'category': 'Building Height & Storeys',
         'discipline': 'Architecture & Planning',
         'severity': 'High',
@@ -56,7 +56,7 @@ COMPREHENSIVE_RULES = [
         'keywords': ['height', 'storey', 'story', 'floor level', 'aod', 'agl', 'elevation'],
         'expected': 'Building height (AGL / AOD) and storey breakdown clearly defined for zoning & aviation limits.',
         'issue_if_missing': True,
-        'standard_clause': 'DCR Cl. 3.4: Permissible height limit G+4P+31F with max allowable AOD elevation.',
+        'standard_clause': 'Meydan Horizon Plot Guidelines: Permissible height limit G+4P+31F with max allowable AOD elevation 145m.',
         'cost_delta': 0,
         'schedule_delta': '1.5 weeks'
     },
@@ -325,6 +325,9 @@ def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENS
             if status != 'Evidence Found' else ''
         )
 
+        # Set default Action Key: Action 1 for gaps, Action 3 for compliant
+        action_key = "1 — OPEN (Correction required before acceptance)" if status != 'Evidence Found' else "3 — CLOSED (Record comment / Accepted)"
+
         results.append({
             'id': rule['id'],
             'source': 'AI',
@@ -340,7 +343,8 @@ def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENS
             'evidence_text': evidence,
             'consultant_comment': default_consultant,
             'internal_note': '',
-            'status': 'Pending Review',  # TA decision: Confirm Issue, Reject as False Positive, Modify & Confirm, Need Clarification
+            'status': 'Pending Review',  # TA decision
+            'action_key': action_key,    # Ellington 1-Open / 2-Pending / 3-Closed
             'cost_delta': rule.get('cost_delta', 0) if status != 'Evidence Found' else 0,
             'schedule_delta': rule.get('schedule_delta', '0 wks') if status != 'Evidence Found' else '0 wks',
             'attachments': []
@@ -355,19 +359,14 @@ def run_ai_review_on_ta_finding(
     ai_findings: List[Dict[str, Any]],
     raw_submittal_text: str = ""
 ) -> Dict[str, Any]:
-    """
-    Evaluates human-created findings and returns advisory suggestions.
-    Crucial requirement: AI does NOT modify or reject human finding.
-    """
     comment = (ta_finding.get('finding_text', '') + " " + ta_finding.get('consultant_comment', '')).lower()
     cat = ta_finding.get('category', '').lower()
     dwg = ta_finding.get('drawing_ref', '').lower()
     text_lower = raw_submittal_text.lower()
     
-    # 1. Duplicate Detection against Stream A
+    # 1. Duplicate Detection
     duplicate_match = None
     for ai_f in ai_findings:
-        # Check by rule keywords or ID or category
         rule = RULE_BY_ID.get(ai_f['id'])
         if rule:
             matching_kws = [kw for kw in rule['keywords'] if kw.lower() in comment]
@@ -384,7 +383,7 @@ def run_ai_review_on_ta_finding(
         is_dup = False
         dup_id = ""
 
-    # 2. Reference Validation & Clause Matching
+    # 2. Reference Validation
     matched_rule = None
     for r in COMPREHENSIVE_RULES:
         if any(kw in comment for kw in r['keywords']):
@@ -401,7 +400,7 @@ def run_ai_review_on_ta_finding(
         ref_val = "No direct statutory code clause identified. Verified as qualitative or project-specific observation."
         suggested_clause = "Project Brief Specification"
 
-    # 3. Evidence Check from drawings
+    # 3. Evidence Check
     if "setback" in comment:
         evidence_chk = "Drawing text extract indicates 4.5m side setback note, but missing front road setback dimension."
     elif "height" in comment:
@@ -411,7 +410,7 @@ def run_ai_review_on_ta_finding(
     else:
         evidence_chk = "Visual / geometric verification recommended on referenced sheet excerpt."
 
-    # 4. Missing Information Check
+    # 4. Missing Information
     if "fire" in comment and "schedule" not in text_lower:
         missing_info = "Finding references fire-rated assemblies, but no dedicated door schedule was detected in the submittal."
     elif "parking" in comment and "bay" not in comment:
@@ -482,10 +481,6 @@ def run_ai_delta_review(
     issued_items: List[Dict[str, Any]],
     resubmission_text: str
 ) -> List[Dict[str, Any]]:
-    """
-    Compares consultant revised submission against issued comments.
-    Proposes resolution status for Technical Architect validation.
-    """
     t = resubmission_text.lower()
     delta_results = []
     
@@ -495,12 +490,10 @@ def run_ai_delta_review(
         drawing_ref = item.get('drawing_ref', 'AR-GENERAL')
         category = item.get('category', 'General')
         
-        # Check if ID, drawing ref, or key terms are addressed
         rule = RULE_BY_ID.get(fid)
         found_kw = next((kw for kw in rule['keywords'] if kw.lower() in t), None) if rule else None
         id_found = fid.lower() in t
         
-        # Check if consultant requested exception or contested
         resp_obj = item.get('response', {})
         resp_type = resp_obj.get('response_type', '') if isinstance(resp_obj, dict) else ''
         
@@ -508,17 +501,21 @@ def run_ai_delta_review(
             delta_status = "Contested by Consultant — Technical Architect Review Required"
             evidence = f"Consultant note: '{resp_obj.get('response_note', '')}'. Consultant contested requirement."
             suggested_action = "Review Contestation"
+            suggested_action_key = "1 — OPEN (Correction required before acceptance)"
         elif id_found or found_kw:
             if "clarif" in comment:
                 delta_status = "Clarification / Response Detected"
+                suggested_action_key = "3 — CLOSED (Record comment / Accepted)"
             else:
                 delta_status = "Potentially Resolved"
+                suggested_action_key = "3 — CLOSED (Record comment / Accepted)"
             evidence = snippet(resubmission_text, fid if id_found else found_kw)
             suggested_action = "Validate Resolution & Close"
         else:
             delta_status = "Still Open / No Evidence Found"
             evidence = "No matching revisions, keywords, or response detected in revised submission text."
             suggested_action = "Maintain Open in Cycle 2"
+            suggested_action_key = "1 — OPEN (Correction required before acceptance)"
 
         delta_results.append({
             'finding_id': fid,
@@ -530,7 +527,8 @@ def run_ai_delta_review(
             'ai_delta_status': delta_status,
             'detected_evidence': evidence,
             'suggested_action': suggested_action,
-            'ta_decision': 'Pending Decision',  # Close Finding, Keep Open, Roll into Cycle 2
+            'action_key': suggested_action_key,
+            'ta_decision': 'Pending Decision',
             'ta_note': ''
         })
         

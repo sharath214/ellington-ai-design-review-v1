@@ -32,7 +32,12 @@ from config import (
     FINDING_CATEGORIES,
     SEVERITIES,
     TA_AI_DECISIONS,
-    CONSULTANT_RESPONSE_OPTIONS
+    CONSULTANT_RESPONSE_OPTIONS,
+    ACTION_KEY_1_OPEN,
+    ACTION_KEY_2_PENDING,
+    ACTION_KEY_3_CLOSED,
+    ELLINGTON_ACTION_KEYS,
+    ACTION_KEY_COLORS
 )
 from storage_manager import (
     load_audit_trail,
@@ -46,6 +51,7 @@ from storage_manager import (
     get_active_or_latest_cycle,
     lock_and_issue_cycle_package,
     save_uploaded_file,
+    build_ellington_spreadsheet_tracker_html,
     BASE_DIR,
     UPLOADS_DIR
 )
@@ -140,6 +146,46 @@ st.markdown("""
         align-items: center;
     }
     
+    /* Action Key Bar */
+    .action-key-bar {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        font-size: 0.82rem;
+    }
+    
+    .action-pill-red {
+        background: #FEF2F2;
+        color: #991B1B;
+        border: 1px solid #EF4444;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 700;
+    }
+    
+    .action-pill-amber {
+        background: #FFFBEB;
+        color: #92400E;
+        border: 1px solid #F59E0B;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 700;
+    }
+    
+    .action-pill-green {
+        background: #F0FDF4;
+        color: #065F46;
+        border: 1px solid #10B981;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 700;
+    }
+    
     /* Metric Cards */
     .metric-card {
         background: #FFFFFF;
@@ -163,6 +209,15 @@ st.markdown("""
         color: #0F172A;
         margin-top: 4px;
         font-family: 'Outfit', sans-serif;
+    }
+    
+    .gap-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     }
     
     .notice-box {
@@ -193,26 +248,6 @@ st.markdown("""
         color: #064E3B;
         font-size: 0.86rem;
         margin: 12px 0;
-    }
-    
-    .warning-box {
-        background: #FEF2F2;
-        border-left: 4px solid #EF4444;
-        padding: 12px 16px;
-        border-radius: 6px;
-        color: #991B1B;
-        font-size: 0.86rem;
-        margin: 12px 0;
-    }
-    
-    .gap-card {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        padding: 18px 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-        transition: transform 0.1s ease;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -336,6 +371,16 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         </div>
         """, unsafe_allow_html=True)
         
+        # Ellington Action Key Legend Bar
+        st.markdown("""
+        <div class='action-key-bar'>
+            <b>Ellington Action Key:</b>
+            <div><span class='action-pill-red'>Action 1 - OPEN</span> Requires response/correction before acceptance</div>
+            <div><span class='action-pill-amber'>Action 2 - PENDING</span> Requires response during next design stage</div>
+            <div><span class='action-pill-green'>Action 3 - CLOSED</span> Record comment (accepted)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         records = load_stage_history()
         projects = sorted(list(set(r.get('project') for r in records if r.get('project'))))
         default_projects = ['Ellington Bukadra Tower (Plot 6117262)', 'Ellington Beach House (Palm Jumeirah)', 'Mercer House (Uptown)']
@@ -346,7 +391,6 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         sel_proj = st.selectbox("Select Project Portfolio", projects)
         st.session_state['project'] = sel_proj
         
-        # Stage metrics
         rows = []
         for s in STAGE_ORDER:
             m = next((r for r in records if r.get('project') == sel_proj and r.get('stage') == s), None)
@@ -403,7 +447,6 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         </div>
         """, unsafe_allow_html=True)
 
-        # Context Setup
         p_c1, p_c2, p_c3, p_c4 = st.columns([1.2, 1, 1, 0.8])
         p_c1.text_input("Project Name", st.session_state['project'], key="studio_proj")
         stage_choice = p_c2.selectbox("Design Stage", STAGE_ORDER, index=STAGE_ORDER.index(st.session_state['stage']) if st.session_state['stage'] in STAGE_ORDER else 1)
@@ -457,7 +500,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     role="System",
                     review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
                     new_value=f"{len(st.session_state['stream_a_findings'])} Findings Generated",
-                    details=f"Evaluated against 17 rules for {st.session_state['stage']}."
+                    details=f"Evaluated against Meydan Horizon DCR Vol II and Authority rules."
                 )
                 upsert_stage_status(
                     project=st.session_state['project'],
@@ -468,9 +511,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                 )
                 st.rerun()
 
-        # -------------------------------------------------
-        # Studio Tabs: The 4 Core Screens
-        # -------------------------------------------------
+        # Studio Tabs
         tab1, tab2, tab3, tab4 = st.tabs([
             "🤖 Tab 1: AI Findings (Stream A)",
             "✍️ Tab 2: My Findings (Stream B)",
@@ -483,32 +524,29 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         # -------------------------------------------------
         with tab1:
             st.markdown("### Stream A: AI First-Pass Compliance Findings")
-            st.caption("AI-generated against DCR, Authority Codes, Brand Standards, and Cross-Discipline baseline. Technical Architect must validate each item.")
+            st.caption("AI-generated against Meydan Horizon DCR Vol II, Dubai Municipality DBC 2021, and UAE Fire Code 2018.")
 
             if not st.session_state['stream_a_findings']:
                 st.info("Run AI First-Pass Review above to populate Stream A findings.")
             else:
                 df_a = pd.DataFrame(st.session_state['stream_a_findings'])
                 
-                # Metrics
-                pot_gaps = int((df_a['ai_status'] == 'Potential Gap').sum())
-                confirmed_a = int(df_a['status'].isin(['Confirm Issue', 'Modify & Confirm', 'Need Clarification']).sum())
-                rejected_a = int((df_a['status'] == 'Reject as False Positive').sum())
-                pending_a = int((df_a['status'] == 'Pending Review').sum())
+                open_count = int(df_a['action_key'].str.startswith('1').sum())
+                pending_count = int(df_a['action_key'].str.startswith('2').sum())
+                closed_count = int(df_a['action_key'].str.startswith('3').sum())
 
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Total AI Findings", len(df_a))
-                m2.metric("Confirmed Action Items", confirmed_a, delta="Issued to Consultant" if confirmed_a else None)
-                m3.metric("Rejected False Positives", rejected_a, delta="0 Score Deduction" if rejected_a else None, delta_color="inverse")
-                m4.metric("Pending TA Decision", pending_a)
+                m2.markdown(f"<div class='metric-card'><div class='card-label'>🔴 Action 1 - OPEN</div><div class='card-value' style='color:#DC2626;'>{open_count}</div></div>", unsafe_allow_html=True)
+                m3.markdown(f"<div class='metric-card'><div class='card-label'>🟡 Action 2 - PENDING</div><div class='card-value' style='color:#D97706;'>{pending_count}</div></div>", unsafe_allow_html=True)
+                m4.markdown(f"<div class='metric-card'><div class='card-label'>🟢 Action 3 - CLOSED</div><div class='card-value' style='color:#059669;'>{closed_count}</div></div>", unsafe_allow_html=True)
 
                 st.markdown("""
                 <div class='human-box'>
-                    <b>Technical Architect Governance:</b> Confirm valid findings, reject AI noise / false positives, or adjust severity/comments. Rejected findings remain internally auditable, will NOT be shown to the consultant, and will NOT affect compliance score.
+                    <b>Technical Architect Governance:</b> Assign the Ellington Action Key (1-Open, 2-Pending, 3-Closed). Only Action 1 and 2 will require consultant response.
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Editable table
                 edited_a = st.data_editor(
                     df_a,
                     use_container_width=True,
@@ -517,10 +555,8 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         'id': st.column_config.TextColumn('Finding ID', width='small', disabled=True),
                         'drawing_ref': st.column_config.TextColumn('Drawing Ref', width='small', disabled=True),
                         'category': st.column_config.TextColumn('Category', width='medium', disabled=True),
-                        'reference_source': st.column_config.TextColumn('Authority / Source', width='medium', disabled=True),
-                        'ai_status': st.column_config.TextColumn('AI Status', width='small', disabled=True),
-                        'severity': st.column_config.SelectboxColumn('Severity', options=SEVERITIES, width='small'),
-                        'ai_confidence': st.column_config.TextColumn('Confidence', width='small', disabled=True),
+                        'reference_source': st.column_config.TextColumn('Authority / DCR Source', width='medium', disabled=True),
+                        'action_key': st.column_config.SelectboxColumn('Ellington Action Key *', options=ELLINGTON_ACTION_KEYS, width='medium', required=True),
                         'status': st.column_config.SelectboxColumn('TA Decision', options=TA_AI_DECISIONS, width='medium', required=True),
                         'internal_note': st.column_config.TextColumn('TA Internal Note (Hidden from Consultant)', width='medium'),
                         'consultant_comment': st.column_config.TextColumn('Consultant-Facing Action Comment', width='large'),
@@ -528,27 +564,25 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     key="editor_stream_a_v1"
                 )
                 
-                if st.button("💾 Save Stream A Review Decisions", key="save_stream_a_btn", type="primary"):
+                if st.button("💾 Save Stream A Decisions & Action Keys", key="save_stream_a_btn", type="primary"):
                     st.session_state['stream_a_findings'] = edited_a.to_dict('records')
                     log_audit_event(
-                        action="Stream A Review Decisions Updated",
+                        action="Stream A Action Keys Updated",
                         user="Technical Architect",
                         role="Technical Architect",
                         review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                        new_value=f"{confirmed_a} Confirmed, {rejected_a} Rejected",
-                        details="TA filtered false positives and authorized action comments."
+                        details="TA updated Action Keys per Ellington spreadsheet standard."
                     )
-                    st.success("Stream A decisions saved successfully!")
+                    st.success("Decisions saved successfully!")
                     st.rerun()
 
         # -------------------------------------------------
-        # TAB 2: My Findings (Stream B - Manual TA Findings)
+        # TAB 2: My Findings (Stream B - Manual TA Review)
         # -------------------------------------------------
         with tab2:
             st.markdown("### Stream B: Technical Architect Independent Findings")
             st.caption("Add subjective observations, spatial qualities, craftsmanship standards, or regulatory gaps identified through human expertise.")
 
-            # Form to Add Finding
             with st.expander("➕ Add New Technical Architect Finding", expanded=False):
                 with st.form("add_ta_finding_form", clear_on_submit=True):
                     f_c1, f_c2 = st.columns([1, 1])
@@ -558,21 +592,21 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     f_c3, f_c4, f_c5 = st.columns(3)
                     disc = f_c3.selectbox("Discipline", ['Architecture & Planning', 'Brand & Finishes', 'Structural', 'MEP', 'Landscape'])
                     sev = f_c4.selectbox("Severity *", SEVERITIES, index=2)
-                    loc_area = f_c5.text_input("Location / Drawing Area (optional)", placeholder="e.g. Tower North Façade, Grid 4-8")
+                    act_key = f_c5.selectbox("Action Key *", ELLINGTON_ACTION_KEYS, index=0)
 
                     finding_desc = st.text_area("Finding Description / Observation *", placeholder="e.g. Balcony soffit finish detail lacks drip groove; risk of rainwater staining on champagne bronze panels.")
                     cons_comment = st.text_area("Consultant-Facing Action Required *", placeholder="e.g. Provide continuous architectural drip profile detail on Sheet AR-3004.")
                     
                     f_c6, f_c7 = st.columns(2)
-                    ref_source = f_c6.text_input("Reference Standard (optional for design judgments)", placeholder="e.g. Ellington Façade Standard 2024 / DDA")
+                    ref_source = f_c6.text_input("Reference Standard (optional for design judgments)", placeholder="e.g. Meydan Horizon Vol II / Ellington Façade Standard")
                     clause_ref = f_c7.text_input("Clause / Section (optional)", placeholder="e.g. Clause 8.2 or Qualitative Intent")
 
-                    internal_note = st.text_input("Internal Note (strictly hidden from consultant)", placeholder="e.g. Discuss with Senior Project Director before final sign-off.")
+                    internal_note = st.text_input("Internal Note (strictly hidden from consultant)", placeholder="e.g. Discuss with Senior Project Director.")
 
-                    # File / Sketch Upload
-                    st.markdown("##### 📎 Attach Supporting Evidence / Sketch")
+                    # Visual Drawing Crop / Sketch Upload (Dual Method)
+                    st.markdown("##### 📎 Attach Drawing Excerpt Thumbnail / Sketch (The Dual Method)")
                     att_c1, att_c2 = st.columns([1.5, 1])
-                    uploaded_att = att_c1.file_uploader("Upload PDF / PNG / JPG / JPEG (Sketch, Markup, Screenshot)", type=['pdf', 'png', 'jpg', 'jpeg'], key="ta_att_uploader")
+                    uploaded_att = att_c1.file_uploader("Upload PNG / JPG / PDF (Drawing Excerpt, Sketch, Markup)", type=['pdf', 'png', 'jpg', 'jpeg'], key="ta_att_uploader")
                     att_type = att_c2.selectbox("Attachment Type", ATTACHMENT_TYPES, index=3)
                     att_vis = att_c2.selectbox("Visibility", ATTACHMENT_VISIBILITY_OPTIONS, index=1)
 
@@ -582,7 +616,6 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                             st.error("Please fill in the required fields (*): Drawing Reference, Finding Description, and Consultant Comment.")
                         else:
                             new_id = f"TA-OBS-{len(st.session_state['stream_b_findings']) + 1:03d}"
-                            
                             atts_list = []
                             if uploaded_att:
                                 att_meta = save_uploaded_file(uploaded_att, att_type, att_vis, uploaded_by="Technical Architect")
@@ -594,12 +627,12 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                                 'drawing_ref': dwg_ref,
                                 'discipline': disc,
                                 'category': finding_cat,
-                                'location_area': loc_area,
                                 'reference_source': ref_source or 'Design Judgment / Professional Opinion',
                                 'clause': clause_ref or '—',
                                 'finding_text': finding_desc,
                                 'evidence_text': 'Manual Human Review Finding',
                                 'severity': sev,
+                                'action_key': act_key,
                                 'ai_confidence': '—',
                                 'consultant_comment': cons_comment,
                                 'internal_note': internal_note,
@@ -616,27 +649,25 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                                 role="Technical Architect",
                                 finding_id=new_id,
                                 review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                                new_value="Draft Finding",
-                                details=f"Category: {finding_cat}, Severity: {sev}."
+                                details=f"Action Key: {act_key[:10]}, Category: {finding_cat}."
                             )
                             st.success(f"Finding `{new_id}` saved as Draft!")
                             st.rerun()
 
-            # Display existing Stream B findings
             st.markdown("#### Registered Technical Architect Findings")
             if not st.session_state['stream_b_findings']:
                 st.info("No manual findings added yet. Click **'+ Add New Technical Architect Finding'** above.")
             else:
                 for idx, tf in enumerate(st.session_state['stream_b_findings']):
                     with st.container():
+                        act_badge = "<span class='action-pill-red'>1 - OPEN</span>" if tf.get('action_key', '').startswith('1') else ("<span class='action-pill-amber'>2 - PENDING</span>" if tf.get('action_key', '').startswith('2') else "<span class='action-pill-green'>3 - CLOSED</span>")
                         st.markdown(f"""
-                        <div style='background: #FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid #0B315E; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;'>
+                        <div class='gap-card' style='border-left: 5px solid #0B315E;'>
                             <div style='display: flex; justify-content: space-between; align-items: center;'>
                                 <div>
                                     <span style='font-size: 1.1rem; font-weight: 700; color: #0F172A;'>`{tf['id']}` — {tf['category']}</span>
-                                    <span style='margin-left: 10px; background: #E0E7FF; color: #3730A3; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px; font-weight: 700;'>Source: {tf['source']}</span>
-                                    <span style='margin-left: 6px; background: #FEF3C7; color: #92400E; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px; font-weight: 700;'>{tf['severity']}</span>
-                                    <span style='margin-left: 6px; background: #F1F5F9; color: #475569; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px;'>Status: {tf['status']}</span>
+                                    <span style='margin-left: 10px;'>{act_badge}</span>
+                                    <span style='margin-left: 6px; background: #E0E7FF; color: #3730A3; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px; font-weight: 700;'>Source: {tf['source']}</span>
                                 </div>
                                 <div style='font-size: 0.82rem; color: #64748B;'>Dwg: <b>{tf['drawing_ref']}</b></div>
                             </div>
@@ -646,53 +677,23 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                             <div style='margin-top: 4px; font-size: 0.88rem; color: #0369A1;'>
                                 <b>Consultant Action:</b> {tf['consultant_comment']}
                             </div>
-                            {f"<div style='margin-top: 4px; font-size: 0.82rem; color: #78350F; background: #FFFBEB; padding: 4px 8px; border-radius: 4px;'><b>🔒 Internal Note:</b> {tf['internal_note']}</div>" if tf.get('internal_note') else ""}
-                            {f"<div style='margin-top: 6px; font-size: 0.80rem; color: #475569;'>📎 <b>Attachments:</b> {', '.join([f'{a.get("file_type", "File")}: {a.get("filename", "")} [{a.get("visibility", "Visible")}]' for a in tf.get('attachments', [])])}</div>" if tf.get('attachments') else ""}
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        btn_c1, btn_c2, btn_c3 = st.columns([1, 1, 2])
+                        btn_c1, btn_c2 = st.columns([1, 1])
                         if btn_c1.button(f"🗑️ Delete", key=f"del_tf_{idx}"):
-                            removed = st.session_state['stream_b_findings'].pop(idx)
-                            log_audit_event(
-                                action="Technical Architect Finding Deleted",
-                                user="Technical Architect",
-                                role="Technical Architect",
-                                finding_id=removed['id'],
-                                review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                                previous_value=removed['finding_text'],
-                                new_value="Deleted"
-                            )
+                            st.session_state['stream_b_findings'].pop(idx)
                             st.rerun()
                         if btn_c2.button(f"✅ Mark Finalized", key=f"fin_tf_{idx}"):
-                            st.session_state['stream_b_findings'][idx]['status'] = 'Finalized'
-                            st.session_state['stream_b_findings'][idx]['is_finalized_for_issue'] = True
+                            tf['status'] = 'Finalized'
                             st.rerun()
 
                 st.divider()
-                st.markdown("#### 🧠 Point-in-Time AI Advisory Review")
-                st.markdown("""
-                <div class='notice-box'>
-                    <b>Controlled Review Action:</b> AI evaluates your manual findings against the 17-rule knowledge base and Stream A to identify potential duplicates, suggest related DCR clauses, check for contradictions, and refine consultant wording.
-                    <b>AI will never automatically modify, overwrite, or delete your findings.</b>
-                </div>
-                """, unsafe_allow_html=True)
-
                 if st.button("🚀 Run AI Advisory Review on My Findings", type="primary", use_container_width=True):
                     raw_text = st.session_state.get('raw_submittal_text', '')
                     for f in st.session_state['stream_b_findings']:
-                        ai_fb = run_ai_review_on_ta_finding(f, st.session_state['stream_a_findings'], raw_text)
-                        f['ai_feedback'] = ai_fb
+                        f['ai_feedback'] = run_ai_review_on_ta_finding(f, st.session_state['stream_a_findings'], raw_text)
                         f['status'] = 'AI Reviewed'
-                    
-                    log_audit_event(
-                        action="AI Advisory Review Executed on TA Findings",
-                        user="AI Engine",
-                        role="System",
-                        review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                        new_value=f"{len(st.session_state['stream_b_findings'])} Findings Evaluated",
-                        details="Advisory feedback generated for reference validation, duplicate check, and consultant wording."
-                    )
                     st.success("AI Advisory Review completed! View feedback in **Tab 3**.")
 
         # -------------------------------------------------
@@ -702,94 +703,36 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             st.markdown("### AI Advisory Feedback on Technical Architect Findings")
             st.caption("AI acts solely as a specialized assistant. Review AI suggestions, accept refinements, or keep your findings exactly as written.")
 
-            reviewed_findings = [f for f in st.session_state['stream_b_findings'] if f.get('ai_feedback')]
-            
-            if not reviewed_findings:
-                st.info("No findings have been reviewed by AI yet. Go to **Tab 2** and click **'Run AI Advisory Review on My Findings'**.")
+            reviewed = [f for f in st.session_state['stream_b_findings'] if f.get('ai_feedback')]
+            if not reviewed:
+                st.info("No findings reviewed yet. Go to **Tab 2** and click **'Run AI Advisory Review on My Findings'**.")
             else:
                 for idx, tf in enumerate(st.session_state['stream_b_findings']):
                     fb = tf.get('ai_feedback')
                     if not fb:
                         continue
-                        
                     with st.container():
                         st.markdown(f"#### Finding `{tf['id']}` — {tf['category']}")
-                        st.markdown(f"**TA Original Comment:** {tf['finding_text']}")
-                        st.markdown(f"**Current Consultant Action:** {tf['consultant_comment']}")
-
-                        # 10-point feedback card
-                        dup_badge = "⚠️ Potential Duplicate" if fb.get('is_duplicate') else "✅ Unique Finding"
-                        dup_color = "#DC2626" if fb.get('is_duplicate') else "#059669"
-                        
                         st.markdown(f"""
                         <div style='background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 14px 18px; margin: 10px 0;'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>
-                                <span style='font-size: 0.95rem; font-weight: 700; color: #0F172A;'>AI Advisory Analysis</span>
-                                <span style='background: {dup_color}; color: #FFFFFF; font-size: 0.72rem; padding: 3px 10px; border-radius: 5px; font-weight: 700;'>
-                                    {dup_badge} ({fb.get('confidence', '88%')} Confidence)
-                                </span>
-                            </div>
                             <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem;'>
-                                <div><b>1. Reference / Clause Validation:</b> {fb.get('reference_validation')}</div>
-                                <div><b>2. Duplicate Detection:</b> {fb.get('duplicate_detection')}</div>
-                                <div><b>3. Drawing Evidence Check:</b> {fb.get('evidence_check')}</div>
-                                <div><b>4. Contradiction Detection:</b> {fb.get('contradiction_detection')}</div>
-                                <div><b>5. Missing Information:</b> {fb.get('missing_information')}</div>
-                                <div><b>6. Suggested Severity:</b> <span style='font-weight: bold; color: #92400E;'>{fb.get('suggested_severity')}</span> (Current: {tf['severity']})</div>
-                                <div style='grid-column: span 2;'><b>7. Suggested Consultant Wording:</b> <i>"{fb.get('suggested_consultant_wording')}"</i></div>
-                                <div><b>8. Cross-Discipline Context:</b> {fb.get('related_project_context')}</div>
-                                <div><b>9. Suggested Classification:</b> {fb.get('classification')}</div>
+                                <div><b>1. Reference Check:</b> {fb.get('reference_validation')}</div>
+                                <div><b>2. Duplicate Check:</b> {fb.get('duplicate_detection')}</div>
+                                <div><b>3. Drawing Evidence:</b> {fb.get('evidence_check')}</div>
+                                <div><b>4. Contradiction Check:</b> {fb.get('contradiction_detection')}</div>
+                                <div style='grid-column: span 2;'><b>7. Suggested Phrasing:</b> <i>"{fb.get('suggested_consultant_wording')}"</i></div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
-
-                        # Decision buttons for TA
-                        a_col1, a_col2, a_col3, a_col4 = st.columns(4)
-                        if a_col1.button("✅ Accept AI Wording & Clause", key=f"accept_ai_{idx}", use_container_width=True):
+                        
+                        a1, a2 = st.columns(2)
+                        if a1.button("✅ Accept AI Wording & Clause", key=f"acc_fb_{idx}"):
                             tf['consultant_comment'] = fb.get('suggested_consultant_wording', tf['consultant_comment'])
-                            if fb.get('suggested_severity'):
-                                tf['severity'] = fb['suggested_severity']
                             tf['status'] = 'Finalized'
-                            tf['is_finalized_for_issue'] = True
-                            log_audit_event(
-                                action="AI Suggestion Accepted",
-                                user="Technical Architect",
-                                role="Technical Architect",
-                                finding_id=tf['id'],
-                                details="Adopted AI consultant wording and severity suggestion."
-                            )
-                            st.success(f"Adopted AI suggestions for `{tf['id']}`!")
                             st.rerun()
-
-                        if a_col2.button("✋ Ignore AI Suggestion", key=f"ignore_ai_{idx}", use_container_width=True):
+                        if a2.button("✋ Ignore & Finalize", key=f"ign_fb_{idx}"):
                             tf['status'] = 'Finalized'
-                            tf['is_finalized_for_issue'] = True
-                            log_audit_event(
-                                action="AI Suggestion Ignored",
-                                user="Technical Architect",
-                                role="Technical Architect",
-                                finding_id=tf['id'],
-                                details="TA maintained human observation and wording as-is."
-                            )
-                            st.info(f"Maintained human finding for `{tf['id']}`.")
                             st.rerun()
-
-                        if a_col3.button("🗑️ Remove Finding", key=f"rem_ai_{idx}", use_container_width=True):
-                            st.session_state['stream_b_findings'].pop(idx)
-                            log_audit_event(
-                                action="Technical Architect Finding Discarded",
-                                user="Technical Architect",
-                                role="Technical Architect",
-                                finding_id=tf['id'],
-                                details="Finding removed based on duplicate detection or self-correction."
-                            )
-                            st.rerun()
-
-                        if a_col4.button("🔒 Finalize Finding", key=f"fin_dir_{idx}", type="primary", use_container_width=True):
-                            tf['status'] = 'Finalized'
-                            tf['is_finalized_for_issue'] = True
-                            st.rerun()
-
                         st.divider()
 
         # -------------------------------------------------
@@ -797,20 +740,12 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         # -------------------------------------------------
         with tab4:
             st.markdown("### Final Review & Review Cycle Lock")
-            st.caption("Convergence of confirmed AI findings and finalized Technical Architect findings into a unified, locked submittal register.")
+            st.caption("Convergence of confirmed AI findings and finalized Technical Architect findings into Ellington's official Comments Tracker.")
 
-            # Compile all finalized items
-            stream_a_confirmed = [
-                f for f in st.session_state['stream_a_findings']
-                if f.get('status') in ['Confirm Issue', 'Modify & Confirm', 'Need Clarification', 'Confirmed']
-            ]
-            stream_b_finalized = [
-                f for f in st.session_state['stream_b_findings']
-                if f.get('status') in ['Finalized', 'Ready for Consultant', 'AI Reviewed']
-            ]
+            stream_a_confirmed = [f for f in st.session_state['stream_a_findings'] if f.get('status') in ['Confirm Issue', 'Modify & Confirm', 'Need Clarification', 'Confirmed']]
+            stream_b_finalized = [f for f in st.session_state['stream_b_findings'] if f.get('status') in ['Finalized', 'Ready for Consultant', 'AI Reviewed']]
             all_finalized = stream_a_confirmed + stream_b_finalized
 
-            # Compliance Score Calculation
             score, score_summary = calculate_dynamic_compliance_score(all_finalized)
             threshold = score_summary['threshold']
             is_above = score_summary['is_compliant']
@@ -818,48 +753,31 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             s1, s2, s3, s4 = st.columns(4)
             score_col = "#059669" if is_above else "#DC2626"
             s1.markdown(f"<div class='metric-card'><div class='card-label'>Compliance Score</div><div class='card-value' style='color:{score_col};'>{score}%</div></div>", unsafe_allow_html=True)
-            s2.markdown(f"<div class='metric-card'><div class='card-label'>Finalized AI Items</div><div class='card-value'>{len(stream_a_confirmed)}</div></div>", unsafe_allow_html=True)
-            s3.markdown(f"<div class='metric-card'><div class='card-label'>TA Manual Items</div><div class='card-value' style='color:#0284C7;'>{len(stream_b_finalized)}</div></div>", unsafe_allow_html=True)
-            s4.markdown(f"<div class='metric-card'><div class='card-label'>Total Issued Comments</div><div class='card-value'>{len(all_finalized)}</div></div>", unsafe_allow_html=True)
+            s2.markdown(f"<div class='metric-card'><div class='card-label'>Total Action Items</div><div class='card-value'>{len(all_finalized)}</div></div>", unsafe_allow_html=True)
+            s3.markdown(f"<div class='metric-card'><div class='card-label'>🔴 Action 1 (Open)</div><div class='card-value' style='color:#DC2626;'>{sum(1 for f in all_finalized if f.get('action_key', '').startswith('1'))}</div></div>", unsafe_allow_html=True)
+            s4.markdown(f"<div class='metric-card'><div class='card-label'>🟡 Action 2 (Pending)</div><div class='card-value' style='color:#D97706;'>{sum(1 for f in all_finalized if f.get('action_key', '').startswith('2'))}</div></div>", unsafe_allow_html=True)
 
-            if not is_above:
-                st.warning(f"⚠️ **Score Below Threshold:** Current compliance score ({score}%) is below the {threshold}% requirement. Resubmission is mandatory.")
-            else:
-                st.success(f"✅ **Score Compliant:** Current compliance score ({score}%) meets the {threshold}% requirement.")
-
-            st.markdown("#### Unified Review Register (Preview Before Issuance)")
-            if not all_finalized:
-                st.warning("No findings have been confirmed in Stream A or finalized in Stream B. Please review and finalize items in Tab 1 and Tab 2.")
-            else:
+            if all_finalized:
                 rows_conv = []
                 for item in all_finalized:
-                    source_label = "Design Review Finding" if item.get('source') == 'AI' else "Technical Architect Comment"
                     rows_conv.append({
+                        'No.': len(rows_conv) + 1,
                         'Finding ID': item['id'],
-                        'Source (Internal)': item.get('source', 'AI'),
-                        'Consultant Display Source': source_label,
+                        'Source': "Design Review Finding" if item.get('source') == 'AI' else "Technical Architect Comment",
+                        'Discipline': item.get('discipline', st.session_state['discipline']),
                         'Drawing Ref': item.get('drawing_ref', 'AR-GENERAL'),
                         'Category': item.get('category', 'General'),
-                        'Severity': item.get('severity', 'Medium'),
-                        'Consultant-Facing Comment': item.get('consultant_comment') or item.get('finding_text', ''),
-                        'Attachments': len(item.get('attachments', []))
+                        'Action Key': item.get('action_key', '1 - OPEN'),
+                        'Comment Details': item.get('consultant_comment') or item.get('finding_text', '')
                     })
                 st.dataframe(pd.DataFrame(rows_conv), use_container_width=True, hide_index=True)
 
-            # Issuance Authority Gate
             st.divider()
             st.markdown("#### 🔒 Point-in-Time Issuance Authority Gate")
-            st.markdown("""
-            <div class='warning-box'>
-                <b>Strict Review Cycle Rule:</b> Once <b>'Finalize & Issue to Consultant'</b> is confirmed, this review cycle will be <b>locked and frozen against silent edits</b>.
-                The Consultant will immediately gain access to their isolated portal. Any future comments must belong to a subsequent review cycle or formal amendment.
-            </div>
-            """, unsafe_allow_html=True)
-
             lock_col1, lock_col2 = st.columns([2, 1])
             with lock_col1:
                 confirm_lock = st.checkbox(
-                    "I confirm that I have reviewed all comments, attachments, and severity ratings, and authorize locking Review Cycle 1 for formal issuance to the Lead Design Consultant.",
+                    "I confirm authorization to lock Review Cycle 1 and formally issue comments to the Lead Design Consultant.",
                     key="confirm_lock_chk"
                 )
             with lock_col2:
@@ -879,12 +797,11 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         submittal_text=raw_submittal,
                         submittal_filename=submittal_name
                     )
-                    st.session_state['active_cycle_record'] = cycle_rec
-                    st.success(f"🎉 Review Cycle {st.session_state['current_cycle_num']} is now LOCKED and officially ISSUED to the Consultant!")
+                    st.success("🎉 Review Cycle 1 officially LOCKED and ISSUED to the Consultant!")
                     st.rerun()
 
     # -----------------------------------------------------
-    # TA VIEW 3: Delta Review & Stage Completion
+    # TA VIEW 3: Delta Review & Sign-Off
     # -----------------------------------------------------
     elif active_page == "🔄 Delta Review & Sign-Off":
         st.markdown("""
@@ -903,8 +820,17 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         else:
             st.markdown(f"### Active Submittal: `{cycle_rec['project']}` — `{cycle_rec['stage']}` (`{cycle_rec['cycle_id']}`)")
             
-            # Ingestion of V2 Resubmission
-            st.markdown("#### 1. Ingest Consultant Resubmission (V2.0)")
+            # Download Ellington Spreadsheet Tracker HTML
+            tracker_html = build_ellington_spreadsheet_tracker_html(cycle_rec)
+            st.download_button(
+                "📥 Download Ellington Design Comments Tracker (Official Spreadsheet HTML)",
+                tracker_html,
+                file_name=f"ellington_comments_tracker_{cycle_rec['stage'].replace(' ', '_')}.html",
+                mime="text/html",
+                use_container_width=True
+            )
+
+            st.markdown("#### Ingest Consultant Resubmission (V2.0)")
             r_c1, r_c2 = st.columns([1.5, 1])
             with r_c1:
                 resub_up = st.file_uploader("Upload Revised Package (V2.0 PDF / TXT)", type=['pdf', 'txt'], key="v2_upload_ta")
@@ -932,14 +858,6 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                 if raw_v2:
                     delta_items = run_ai_delta_review(cycle_rec['consultant_package'], raw_v2)
                     st.session_state['delta_results'] = delta_items
-                    log_audit_event(
-                        action="AI Delta Review Executed",
-                        user="AI Engine",
-                        role="System",
-                        review_cycle=cycle_rec['cycle_id'],
-                        new_value=f"{len(delta_items)} Items Evaluated",
-                        details=f"Compared {resub_ver_text} against issued comments."
-                    )
                     upsert_stage_status(
                         project=st.session_state['project'],
                         stage=st.session_state['stage'],
@@ -948,15 +866,8 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     )
                     st.rerun()
 
-            # Display Delta Review Results
             if 'delta_results' in st.session_state:
-                st.markdown("#### 2. AI Delta Review Results (Human Validation Gate)")
-                st.markdown("""
-                <div class='human-box'>
-                    <b>Technical Architect Authority:</b> AI proposes resolution statuses based on textual and schedule evidence. Technical Architect must validate each proposal. <b>AI cannot independently close findings.</b>
-                </div>
-                """, unsafe_allow_html=True)
-
+                st.markdown("#### AI Delta Review Results (Validation Gate)")
                 df_delta = pd.DataFrame(st.session_state['delta_results'])
                 
                 edited_delta = st.data_editor(
@@ -967,42 +878,29 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         'finding_id': st.column_config.TextColumn('ID', width='small', disabled=True),
                         'drawing_ref': st.column_config.TextColumn('Drawing Ref', width='small', disabled=True),
                         'issued_comment': st.column_config.TextColumn('Issued Comment', width='large', disabled=True),
-                        'consultant_response_type': st.column_config.TextColumn('Consultant Response', width='medium', disabled=True),
+                        'consultant_response_note': st.column_config.TextColumn('Consultant Response (Date-Stamped)', width='medium', disabled=True),
                         'ai_delta_status': st.column_config.TextColumn('AI Delta Proposal', width='medium', disabled=True),
-                        'detected_evidence': st.column_config.TextColumn('Detected Revision Evidence', width='large', disabled=True),
-                        'ta_decision': st.column_config.SelectboxColumn(
-                            'TA Final Decision *',
-                            options=['Pending Decision', 'Close Finding', 'Keep Open', 'Roll into Cycle 2'],
-                            width='medium',
-                            required=True
-                        ),
+                        'ta_decision': st.column_config.SelectboxColumn('TA Decision *', options=['Pending Decision', 'Close Finding', 'Keep Open', 'Roll into Cycle 2'], width='medium', required=True),
                         'ta_note': st.column_config.TextColumn('TA Validation Note', width='medium')
                     },
                     key="delta_editor_v1"
                 )
                 
                 st.session_state['delta_results'] = edited_delta.to_dict('records')
-
-                # Decision Summary
                 f_closed = int((edited_delta['ta_decision'] == 'Close Finding').sum())
                 f_open = int((edited_delta['ta_decision'].isin(['Keep Open', 'Roll into Cycle 2'])).sum())
-                f_pending = int((edited_delta['ta_decision'] == 'Pending Decision').sum())
 
-                d1, d2, d3 = st.columns(3)
-                d1.metric("Validated & Closed", f_closed)
-                d2.metric("Remaining Open", f_open)
-                d3.metric("Pending TA Decision", f_pending)
+                d1, d2 = st.columns(2)
+                d1.metric("Validated & Closed (Action 3)", f_closed)
+                d2.metric("Remaining Open (Action 1 / 2)", f_open)
 
-                # Stage Completion Form
                 st.divider()
-                st.markdown("#### 3. Milestone Completion Authorization")
                 signoff_user = st.text_input("Authorizing Technical Architect", "Senior Technical Architect — Ellington Properties")
-                signoff_note = st.text_area("Sign-Off Justification & Notes", f"All material statutory and brand comments validated in V2.0 submittal. Stage authorized.")
+                signoff_note = st.text_area("Sign-Off Justification", f"All material statutory and brand comments validated in V2.0 submittal. Stage authorized.")
 
                 col_c1, col_c2 = st.columns(2)
-                
                 with col_c1:
-                    complete_allowed = (f_open == 0 and f_pending == 0 and len(edited_delta) > 0)
+                    complete_allowed = (f_open == 0 and len(edited_delta) > 0)
                     if st.button("✅ Complete Stage", type="primary", disabled=not complete_allowed, use_container_width=True):
                         upsert_stage_status(
                             project=st.session_state['project'],
@@ -1012,32 +910,19 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                             reviewer=signoff_user,
                             note=signoff_note
                         )
-                        log_audit_event(
-                            action="Design Stage Completed",
-                            user=signoff_user,
-                            role="Technical Architect",
-                            review_cycle=cycle_rec['cycle_id'],
-                            previous_value="Delta Review",
-                            new_value="Completed",
-                            details=f"All {f_closed} findings verified and closed."
-                        )
-                        st.success(f"🎉 Stage '{st.session_state['stage']}' has been officially marked as COMPLETED!")
+                        st.success(f"🎉 Stage '{st.session_state['stage']}' marked as COMPLETED!")
                         st.rerun()
 
                 with col_c2:
                     with st.popover("⚠️ Complete Stage with Outstanding Minor Items"):
-                        st.markdown("##### Complete with Outstanding Items (Governance Gate)")
-                        st.caption("Permitted only when remaining items are non-statutory minor items deferred to the next stage.")
                         deferred_items = st.multiselect(
-                            "Select Items to Defer",
+                            "Select Items to Defer to Next Stage",
                             options=[f['finding_id'] for f in st.session_state['delta_results'] if f.get('ta_decision') != 'Close Finding'],
                             default=[f['finding_id'] for f in st.session_state['delta_results'] if f.get('ta_decision') != 'Close Finding']
                         )
-                        target_stage = st.selectbox("Target Future Resolution Stage", ['Detailed Design', 'Tender Package', 'IFC / Construction'])
-                        comp_reason = st.text_area("Mandatory Technical Reason for Deferral", placeholder="e.g. Minor façade panel trim details approved for deferral to Detailed Design without impacting authority approvals.")
-                        override_ack = st.checkbox("I formally confirm authorization to complete this milestone with deferred items.")
-
-                        if st.button("Authorize Completion with Open Items", type="primary", disabled=not override_ack or not comp_reason):
+                        target_stage = st.selectbox("Target Resolution Stage", ['Detailed Design', 'Tender Package', 'IFC / Construction'])
+                        comp_reason = st.text_area("Technical Justification for Deferral", placeholder="e.g. Non-statutory façade trim approved for deferral to Detailed Design.")
+                        if st.button("Authorize Completion with Open Items", type="primary", disabled=not comp_reason):
                             upsert_stage_status(
                                 project=st.session_state['project'],
                                 stage=st.session_state['stage'],
@@ -1047,19 +932,11 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                                 note=f"Deferred items {deferred_items} to {target_stage}. Reason: {comp_reason}",
                                 deferred_items=deferred_items
                             )
-                            log_audit_event(
-                                action="Stage Completed with Outstanding Items",
-                                user=signoff_user,
-                                role="Technical Architect",
-                                review_cycle=cycle_rec['cycle_id'],
-                                new_value="Completed with Outstanding Items",
-                                details=f"Deferred {len(deferred_items)} items to {target_stage}."
-                            )
-                            st.success("Stage authorized as 'Completed with Outstanding Items'!")
+                            st.success("Authorized with Outstanding Items!")
                             st.rerun()
 
     # -----------------------------------------------------
-    # TA VIEW 4: Audit Trail & Stage History
+    # TA VIEW 4: Audit Trail
     # -----------------------------------------------------
     elif active_page == "📜 Audit Trail & Stage History":
         st.markdown("""
@@ -1077,9 +954,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             st.info("No audit events recorded yet.")
         else:
             df_audit = pd.DataFrame(events)
-            st.markdown(f"**Total Traceable Events:** `{len(df_audit)}`")
             st.dataframe(df_audit, use_container_width=True, hide_index=True)
-            
             st.download_button(
                 "📥 Download Audit Trail (CSV)",
                 df_audit.to_csv(index=False),
@@ -1089,7 +964,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             )
 
     # -----------------------------------------------------
-    # TA VIEW 5: Drawing Scale Feasibility Note
+    # TA VIEW 5: Drawing Scale Analysis Feasibility
     # -----------------------------------------------------
     elif active_page == "📐 Drawing Scale Analysis Feasibility":
         st.markdown("""
@@ -1101,33 +976,11 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             <div class='subtitle'>Feasibility, technical architecture, and risk analysis for inferring dimensions from visual scale bars.</div>
         </div>
         """, unsafe_allow_html=True)
-
         st.markdown("""
         ### Status: 🔍 Capability Under Investigation
-        
-        **Client Query:** *"Can AI analyze drawings where dimensions are missing but a scale (e.g. 1:100 or graphic scale bar) is provided?"*
-
-        ---
-
-        #### 1. Executive Summary & Feasibility
-        - **Current Capability:** The current prototype extracts vector and textual layers (annotations, schedules, title blocks, and specifications). Direct geometric measurement from raster/scanned scale bars is **not active** in V1.
-        - **Feasibility Assessment:** **High Feasibility in Phase 2**, subject to vector CAD/BIM or high-resolution PDF source submittals.
-
-        #### 2. Required Source Formats
-        | Format | Feasibility | Measurement Accuracy |
-        |---|---|---|
-        | **Vector PDF (AutoCAD / Revit print)** | High | **± 1.0 mm** (True coordinate vectors accessible) |
-        | **DWG / DXF (Direct CAD files)** | Very High | **± 0.01 mm** (Exact native geometry) |
-        | **Raster Scan / Scanned PDF** | Low / Risky | **± 50–150 mm** (DPI distortion, page scaling, rotation error) |
-
-        #### 3. Recommended Technical Pipeline (Phase 2 Roadmap)
-        1. **Graphic Scale Bar Optical Calibration:** AI detects the graphic scale bar (e.g., 0–5m), measures its exact pixel distance, and calculates the `Pixels-per-Meter (PPM)` transformation matrix.
-        2. **Coordinate Normalization:** Calibrates against drawing borders to eliminate paper stretch and non-linear optical distortion.
-        3. **Corridor & Room Boundary Extraction:** Runs polygon segmentation on wall centerlines to calculate clear widths and room areas.
-        4. **Human Verification Overlay:** Before issuing any dimensional variance to a consultant, the system generates an annotated visual overlay for the Technical Architect to confirm the measured baseline.
-
-        #### 4. Critical Engineering Risks & Limitations
-        > **Strict Warning:** Inferring statutory life-safety dimensions (e.g. minimum 30m egress travel distance or 6.0m fire truck access) from raster drawings without vector coordinates presents legal and regulatory liability. Automated measurement must always be calibrated with a human confirmation gate.
+        **Client Query:** *"Can AI analyze drawings where dimensions are missing but a graphic scale bar is provided?"*
+        - **Feasibility:** High Feasibility in Phase 2 for vector PDFs / CAD (±0.01mm–1.0mm). High risk on scanned rasters (±50–150mm distortion).
+        - **Roadmap:** Implement Optical Scale Bar Calibration (PPM matrix), polygon segmentation, and mandatory human overlay verification.
         """)
 
 # =========================================================
@@ -1153,31 +1006,39 @@ else:
     else:
         cons_items = cycle_rec.get('consultant_package', [])
 
-        # -------------------------------------------------
-        # TOP CARD: View Design Package & Documents uploaded by TA
-        # -------------------------------------------------
+        # Ellington Action Key Legend Bar
+        st.markdown("""
+        <div class='action-key-bar'>
+            <b>Ellington Action Key:</b>
+            <div><span class='action-pill-red'>Action 1 - OPEN</span> Requires response/correction before acceptance</div>
+            <div><span class='action-pill-amber'>Action 2 - PENDING</span> Requires response during next design stage</div>
+            <div><span class='action-pill-green'>Action 3 - CLOSED</span> Record comment (accepted)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         pkg_name = cycle_rec.get('submittal_filename', '015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt')
         pkg_text = cycle_rec.get('submittal_text', '')
         if not pkg_text:
             sample_p = BASE_DIR / "sample_schematic_arch.txt"
             pkg_text = sample_p.read_text(encoding='utf-8') if sample_p.exists() else ""
 
+        # Submittal Package Viewer & Download
         with st.container():
             st.markdown(f"""
-            <div style='background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 5px solid #D4AF37; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;'>
+            <div style='background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 5px solid #D4AF37; border-radius: 8px; padding: 14px 18px; margin-bottom: 16px;'>
                 <div style='display: flex; justify-content: space-between; align-items: center;'>
                     <div>
-                        <div style='font-size: 1.1rem; font-weight: 700; color: #0F172A; font-family: Outfit, sans-serif;'>
-                            📂 Submittal Design Package & Reference Drawings
+                        <div style='font-size: 1.05rem; font-weight: 700; color: #0F172A; font-family: Outfit, sans-serif;'>
+                            📂 Submittal Design Package & Reference Drawings (The Dual Method)
                         </div>
-                        <div style='font-size: 0.84rem; color: #64748B; margin-top: 4px;'>
+                        <div style='font-size: 0.82rem; color: #64748B; margin-top: 3px;'>
                             <b>Project:</b> {cycle_rec['project']} &nbsp;|&nbsp; 
-                            <b>Milestone:</b> {cycle_rec['stage']} &nbsp;|&nbsp; 
-                            <b>Review Cycle:</b> <span style='background:#E0E7FF; color:#3730A3; padding:2px 6px; border-radius:4px; font-weight:bold;'>{cycle_rec['cycle_id']}</span> &nbsp;|&nbsp;
-                            <b>Package:</b> `{pkg_name}`
+                            <b>Stage:</b> {cycle_rec['stage']} &nbsp;|&nbsp; 
+                            <b>Cycle:</b> <span style='background:#E0E7FF; color:#3730A3; padding:2px 6px; border-radius:4px; font-weight:bold;'>{cycle_rec['cycle_id']}</span> &nbsp;|&nbsp;
+                            <b>File:</b> <code>{pkg_name}</code>
                         </div>
                     </div>
-                    <span style='background: #10B981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;'>
+                    <span style='background: #10B981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 0.72rem; font-weight: 700;'>
                         LOCKED REVIEW CYCLE
                     </span>
                 </div>
@@ -1189,11 +1050,12 @@ else:
                 with st.expander("👁️ View Full Drawing Package Text, Annotations & Schedules", expanded=False):
                     st.text(pkg_text[:12000] + ("\n... [Truncated for preview]" if len(pkg_text) > 12000 else ""))
             with d_c2:
+                tracker_html = build_ellington_spreadsheet_tracker_html(cycle_rec)
                 st.download_button(
-                    label="📥 Download Submittal Drawing Package (TXT)",
-                    data=pkg_text,
-                    file_name=pkg_name,
-                    mime="text/plain",
+                    "📥 Download Official Spreadsheet Comments Tracker (HTML)",
+                    tracker_html,
+                    file_name=f"ellington_comments_tracker_{cycle_rec['stage'].replace(' ', '_')}.html",
+                    mime="text/html",
                     use_container_width=True
                 )
 
@@ -1202,25 +1064,20 @@ else:
         # -------------------------------------------------
         if active_page == "📋 Review Register & Gap Responses":
             st.markdown("### Official Review Comments & Consultant Response Actions")
-            st.markdown("""
-            <div class='client-box'>
-                <b>Action Required for Each Gap:</b> Review each item below. Select your formal response (<b>Accept / Will Rectify</b>, <b>Clarification Requested</b>, <b>Contest Finding</b>, or <b>Exception Requested</b>), provide your response explanation, and <b>upload your supporting revised drawings/documents</b>.
-            </div>
-            """, unsafe_allow_html=True)
 
-            # Metrics
             total_gaps = len(cons_items)
             responded_count = sum(1 for it in cons_items if it.get('response', {}).get('response_type') not in ['Pending Response', '', None])
-            pending_count = total_gaps - responded_count
+            open_count = sum(1 for it in cons_items if it.get('action_code') == '1' or it.get('action_key', '').startswith('1'))
+            pending_count = sum(1 for it in cons_items if it.get('action_code') == '2' or it.get('action_key', '').startswith('2'))
 
-            m1, m2, m3 = st.columns(3)
+            m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Review Comments", total_gaps)
             m2.metric("Responses Recorded", responded_count, delta="Completed" if responded_count == total_gaps else None)
-            m3.metric("Pending Responses", pending_count, delta="Action Needed" if pending_count > 0 else "All Set", delta_color="inverse")
+            m3.markdown(f"<div class='metric-card'><div class='card-label'>🔴 Action 1 - OPEN</div><div class='card-value' style='color:#DC2626;'>{open_count}</div></div>", unsafe_allow_html=True)
+            m4.markdown(f"<div class='metric-card'><div class='card-label'>🟡 Action 2 - PENDING</div><div class='card-value' style='color:#D97706;'>{pending_count}</div></div>", unsafe_allow_html=True)
 
             st.divider()
 
-            # Iterate through each gap with interactive response and document upload
             for idx, it in enumerate(cons_items):
                 fid = it['finding_id']
                 cat = it['category']
@@ -1231,25 +1088,24 @@ else:
                 curr_resp = it.get('response', {})
                 resp_status = curr_resp.get('response_type', 'Pending Response')
                 is_responded = resp_status != 'Pending Response'
+                act_key_str = it.get('action_key', '1 - OPEN')
 
-                status_badge = "✅ Response Saved" if is_responded else "⏳ Pending Action"
-                badge_bg = "#ECFDF5" if is_responded else "#FFFBEB"
-                badge_color = "#047857" if is_responded else "#B45309"
+                act_badge = "<span class='action-pill-red'>Action 1 - OPEN</span>" if act_key_str.startswith('1') else ("<span class='action-pill-amber'>Action 2 - PENDING</span>" if act_key_str.startswith('2') else "<span class='action-pill-green'>Action 3 - CLOSED</span>")
 
                 with st.container():
                     st.markdown(f"""
-                    <div class='gap-card' style='border-left: 5px solid {("#10B981" if is_responded else "#F59E0B")};'>
+                    <div class='gap-card' style='border-left: 5px solid {("#10B981" if is_responded else ("#EF4444" if act_key_str.startswith("1") else "#F59E0B"))};'>
                         <div style='display: flex; justify-content: space-between; align-items: center;'>
                             <div>
                                 <span style='font-size: 1.15rem; font-weight: 800; color: #0F172A;'>Item #{idx+1}: `{fid}`</span>
-                                <span style='margin-left: 10px; background: #E0E7FF; color: #3730A3; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;'>{src}</span>
-                                <span style='margin-left: 6px; background: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;'>Severity: {sev}</span>
+                                <span style='margin-left: 10px;'>{act_badge}</span>
+                                <span style='margin-left: 6px; background: #E0E7FF; color: #3730A3; padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;'>{src}</span>
                             </div>
-                            <span style='background: {badge_bg}; color: {badge_color}; padding: 4px 12px; border-radius: 6px; font-size: 0.80rem; font-weight: 700;'>
-                                {status_badge} ({resp_status})
+                            <span style='background: {("#ECFDF5" if is_responded else "#FFFBEB")}; color: {("#047857" if is_responded else "#B45309")}; padding: 4px 12px; border-radius: 6px; font-size: 0.80rem; font-weight: 700;'>
+                                {("✅ Response Saved (" + resp_status + ")") if is_responded else "⏳ Response Required"}
                             </span>
                         </div>
-                        <div style='margin-top: 10px; font-size: 0.92rem; color: #334155;'>
+                        <div style='margin-top: 8px; font-size: 0.90rem; color: #334155;'>
                             <b>Drawing / Sheet Reference:</b> <code>{dwg}</code> &nbsp;|&nbsp; <b>Category:</b> {cat}
                         </div>
                         <div style='margin-top: 8px; font-size: 0.95rem; color: #0F172A; background: #F1F5F9; padding: 12px 16px; border-radius: 6px;'>
@@ -1258,17 +1114,17 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # Display TA attachments for this item if any
+                    # Technical Architect Visual Markup / Attachments Display
                     ta_atts = it.get('attachments', [])
                     if ta_atts:
-                        st.markdown(f"**📎 Technical Architect Attachments ({len(ta_atts)} file/sketch):**")
+                        st.markdown(f"**📎 Drawing Crop / Visual Markup (The Dual Method):**")
                         for a_idx, att in enumerate(ta_atts):
                             att_path = Path(att.get('stored_path', ''))
                             a_col1, a_col2 = st.columns([2, 1])
                             with a_col1:
-                                st.caption(f"📄 **{att.get('file_type', 'File')}:** `{att.get('filename')}` ({att.get('size_display', '')})")
+                                st.caption(f"📄 **{att.get('file_type', 'File')}:** `{att.get('filename')}`")
                                 if att_path.exists() and att_path.suffix.lower() in ['.png', '.jpg', '.jpeg']:
-                                    st.image(str(att_path), caption=f"TA Attachment: {att.get('filename')}", use_container_width=True)
+                                    st.image(str(att_path), caption=f"Visual Markup: {att.get('filename')}", use_container_width=True)
                             with a_col2:
                                 if att_path.exists():
                                     st.download_button(
@@ -1279,14 +1135,14 @@ else:
                                         use_container_width=True
                                     )
 
-                    # Interactive Response and File Upload specifically for this Gap
+                    # Interactive Response and File Upload
                     with st.expander(f"✍️ Update Consultant Response & Upload Revised Drawing for `{fid}`", expanded=not is_responded):
                         c1, c2 = st.columns([1, 1.2])
                         with c1:
                             r_type_idx = CONSULTANT_RESPONSE_OPTIONS.index(resp_status) if resp_status in CONSULTANT_RESPONSE_OPTIONS else 1
                             new_r_type = st.selectbox(
                                 "Your Response / Action Type *",
-                                CONSULTANT_RESPONSE_OPTIONS[1:],  # exclude 'Pending Response'
+                                CONSULTANT_RESPONSE_OPTIONS[1:],
                                 index=r_type_idx - 1 if r_type_idx > 0 else 0,
                                 key=f"resp_type_sel_{idx}"
                             )
@@ -1297,14 +1153,16 @@ else:
                                 placeholder="e.g. Revised on Sheet AR-1001 Rev B"
                             )
                         with c2:
+                            raw_note = curr_resp.get('response_note', '')
+                            # Strip existing prefix for editing if present
+                            clean_note = re.sub(r'^\[CONSULTANT [^\]]+\]:\s*', '', raw_note)
                             resp_note = st.text_area(
                                 "Consultant Explanation / Technical Justification *",
-                                value=curr_resp.get('response_note', ''),
+                                value=clean_note,
                                 key=f"resp_note_input_{idx}",
-                                placeholder="e.g. Dimensions confirmed and revised on Sheet AR-1001 per Meydan Horizon 6.0m road setback requirement."
+                                placeholder="e.g. Noted. Front setback dimension updated to 6.0m per Meydan Horizon DCR Cl. 4.2."
                             )
 
-                        # Document or Drawing Upload specifically for this gap
                         st.markdown("##### 📎 Upload Supporting Document / Drawing for this Gap")
                         u_col1, u_col2 = st.columns([1.5, 1])
                         cons_gap_file = u_col1.file_uploader(
@@ -1314,22 +1172,25 @@ else:
                         )
                         cons_file_desc = u_col2.text_input("Drawing / Document Title", value=f"Revised_{fid}", key=f"cons_file_desc_{idx}")
 
-                        # Save Button
                         if st.button(f"💾 Save & Submit Response for {fid}", key=f"save_btn_{idx}", type="primary"):
                             resp_atts = curr_resp.get('attachments', [])
                             if cons_gap_file:
                                 att_res = save_uploaded_file(cons_gap_file, "Consultant Revised Drawing", "Consultant Visible", uploaded_by="Lead Design Consultant")
                                 resp_atts.append(att_res)
 
+                            # Format date-stamped note matching Ellington spreadsheet standard
+                            today_str = datetime.now().strftime("%d-%m-%Y")
+                            user_note_text = resp_note or "Noted. Revision acknowledged and incorporated."
+                            stamped_note = f"[CONSULTANT {today_str}]: {user_note_text}"
+
                             it['response'] = {
                                 'response_type': new_r_type,
-                                'response_note': resp_note or "Revision acknowledged and incorporated.",
+                                'response_note': stamped_note,
                                 'revised_drawing_ref': rev_dwg,
                                 'attachments': resp_atts,
                                 'responded_at': datetime.now().strftime("%Y-%m-%d %H:%M")
                             }
 
-                            # Persist to review_cycles.json
                             cycles = load_review_cycles()
                             for c in cycles:
                                 if c.get('cycle_id') == cycle_rec['cycle_id']:
@@ -1344,14 +1205,13 @@ else:
                                 finding_id=fid,
                                 review_cycle=cycle_rec['cycle_id'],
                                 new_value=new_r_type,
-                                details=f"Note: '{resp_note}'. Uploaded: {cons_gap_file.name if cons_gap_file else 'None'}."
+                                details=f"Note: '{stamped_note}'."
                             )
-                            st.success(f"🎉 Response and documents recorded successfully for `{fid}`!")
+                            st.success(f"🎉 Response recorded successfully for `{fid}` in Ellington format: '{stamped_note}'")
                             st.rerun()
 
-                        # Display existing uploaded consultant documents for this item
                         if curr_resp.get('attachments'):
-                            st.markdown(f"**Uploaded Consultant Files for this item:**")
+                            st.markdown(f"**Uploaded Consultant Files:**")
                             for c_att in curr_resp.get('attachments', []):
                                 st.info(f"📄 `{c_att.get('filename')}` ({c_att.get('size_display')}) — Uploaded at {c_att.get('timestamp')}")
 
@@ -1364,24 +1224,17 @@ else:
             st.markdown(f"### Formal Package Resubmission — `{cycle_rec['cycle_id']}`")
             st.caption("Once you have updated your comments for all gaps, submit your complete revised submittal package (V2.0+) to notify the Technical Architect.")
 
-            st.markdown("""
-            <div class='notice-box'>
-                <b>Milestone Step:</b> Submitting this package notifies Ellington Technical Architects to execute the <b>AI Delta Review</b> and compare your V2.0 submittal against the original comments.
-            </div>
-            """, unsafe_allow_html=True)
-
             with st.form("formal_resub_form"):
                 pkg_ver = st.text_input("Submittal Revision Version", "V2.0")
                 cover_summary = st.text_area(
                     "Executive Cover Letter / Transmittal Summary",
-                    value="We submit herewith Revision B (V2.0) of the Schematic Design package incorporating all Ellington design comments, dimensioned setbacks, updated parking allocations, and fire egress analysis.",
+                    value="We submit herewith Revision B (V2.0) of the Schematic Design package incorporating all Ellington design comments, dimensioned setbacks per Meydan Horizon DCR Vol II, updated parking allocations, and fire egress analysis.",
                     height=120
                 )
 
                 st.markdown("##### 📁 Upload Complete Revised Design Package (Drawings & Specifications)")
                 c_up1, c_up2 = st.columns([1.5, 1])
                 rev_package_file = c_up1.file_uploader("Upload Master Revised PDF / TXT / DOCX Package", type=['pdf', 'txt', 'docx'], key="master_v2_upload")
-                
                 quick_sample = c_up2.checkbox("Or use pre-indexed Bukadra V2.0 Sample Resubmission", value=True)
 
                 submitted_master = st.form_submit_button("🚀 Submit Formal Resubmission Package to Ellington", type="primary", use_container_width=True)

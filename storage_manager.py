@@ -1,6 +1,7 @@
 """
 Storage manager and persistence layer for Ellington AI Design Review Management System V1.
-Handles JSON persistence for Stage History, Immutable Audit Trail, Review Cycles, and Attachment Storage.
+Handles JSON persistence for Stage History, Immutable Audit Trail, Review Cycles, Attachment Storage,
+and Ellington-formatted Comments Tracker HTML/CSV exports matching the client's spreadsheet.
 """
 
 import json
@@ -40,10 +41,10 @@ def log_audit_event(
     action: str,
     user: str = "Technical Architect",
     role: str = "Technical Architect",
-    finding_id: str = "—",
+    finding_id: str = "-",
     review_cycle: str = "Cycle 1",
-    previous_value: str = "—",
-    new_value: str = "—",
+    previous_value: str = "-",
+    new_value: str = "-",
     details: str = ""
 ) -> Dict[str, Any]:
     events = load_audit_trail()
@@ -60,7 +61,7 @@ def log_audit_event(
         'new_value': str(new_value),
         'details': details
     }
-    events.insert(0, event)  # newest first
+    events.insert(0, event)
     save_audit_trail(events)
     return event
 
@@ -175,43 +176,41 @@ def lock_and_issue_cycle_package(
     submittal_text: str = "",
     submittal_filename: str = ""
 ) -> Dict[str, Any]:
-    """
-    Creates an immutable frozen snapshot of the review cycle.
-    Separates internal audit data from consultant-visible payload.
-    Stores the submittal design document/drawings for consultant inspection.
-    """
     cycles = load_review_cycles()
     cycle_id = f"CYCLE-{cycle_num}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
-    # If submittal_text is missing, fall back to sample schematic text
     if not submittal_text:
         sample_path = BASE_DIR / "sample_schematic_arch.txt"
         if sample_path.exists():
             submittal_text = sample_path.read_text(encoding='utf-8')
             submittal_filename = submittal_filename or "015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt"
 
-    # Filter and format consultant visible items
     consultant_items = []
     for item in finalized_findings:
-        # Filter attachments to consultant visible only
         raw_atts = item.get('attachments', [])
         cons_atts = [
             att for att in raw_atts 
             if att.get('visibility') == 'Consultant Visible'
         ]
         
-        # Consultant-facing origin display
         source_label = "Design Review Finding" if item.get('source') == 'AI' else "Technical Architect Comment"
         
+        # Action Key logic (Ellington spreadsheet standard)
+        sev = item.get('severity', 'Medium')
+        action_code = "1" if sev in ['Critical', 'High'] else ("2" if sev == 'Medium' else "3")
+        action_label = "1 - OPEN (Correction required before acceptance)" if action_code == "1" else ("2 - PENDING (Resolve during next design stage)" if action_code == "2" else "3 - CLOSED (Record comment / Accepted)")
+
         consultant_items.append({
             'finding_id': item['id'],
             'drawing_ref': item.get('drawing_ref', 'AR-GENERAL'),
             'discipline': item.get('discipline', discipline),
             'category': item.get('category', 'General Compliance'),
             'reference_source': item.get('reference_source', 'Authority / DCR'),
-            'clause': item.get('clause', '—'),
-            'severity': item.get('severity', 'Medium'),
+            'clause': item.get('clause', '-'),
+            'severity': sev,
+            'action_key': action_label,
+            'action_code': action_code,
             'comment': item.get('consultant_comment') or item.get('finding_text', ''),
             'source_display': source_label,
             'source_internal': item.get('source', 'AI'),
@@ -244,7 +243,6 @@ def lock_and_issue_cycle_package(
         'status': 'Issued to Consultant'
     }
     
-    # Update or append cycle
     existing_idx = next(
         (i for i, c in enumerate(cycles) if c.get('project') == project and c.get('stage') == stage and c.get('cycle_id') == cycle_id),
         None
@@ -256,7 +254,6 @@ def lock_and_issue_cycle_package(
         
     save_review_cycles(cycles)
     
-    # Log audit event
     log_audit_event(
         action=f"Review Cycle {cycle_num} Finalized & Issued",
         user=issued_by,
@@ -267,7 +264,6 @@ def lock_and_issue_cycle_package(
         details=f"Compliance Score: {compliance_score}%. Review cycle frozen against silent edits."
     )
     
-    # Update stage status
     upsert_stage_status(
         project=project,
         stage=stage,
@@ -308,3 +304,116 @@ def save_uploaded_file(uploaded_file, category: str, visibility: str, uploaded_b
         'size_display': size_display
     }
     return att
+
+# ---------------------------------------------------------
+# Ellington Spreadsheet-Formatted Comments Tracker HTML Export
+# ---------------------------------------------------------
+def build_ellington_spreadsheet_tracker_html(cycle_rec: Dict[str, Any]) -> str:
+    """
+    Renders an HTML export that directly mirrors Ellington Properties'
+    official Design Review / Comment Tracker Excel spreadsheet.
+    """
+    items = cycle_rec.get('consultant_package', [])
+    now_date = datetime.now().strftime('%d.%m.%Y')
+
+    rows_html = ""
+    for idx, it in enumerate(items):
+        act_code = it.get('action_code', '1')
+        if act_code == "1":
+            act_badge = "<span style='background:#DC2626; color:white; padding:4px 10px; border-radius:4px; font-weight:bold;'>1</span>"
+        elif act_code == "2":
+            act_badge = "<span style='background:#F59E0B; color:white; padding:4px 10px; border-radius:4px; font-weight:bold;'>2</span>"
+        else:
+            act_badge = "<span style='background:#10B981; color:white; padding:4px 10px; border-radius:4px; font-weight:bold;'>3</span>"
+
+        resp_obj = it.get('response', {})
+        resp_note = resp_obj.get('response_note', 'Pending consultant review.')
+        rev_dwg = resp_obj.get('revised_drawing_ref', '')
+
+        rows_html += f"""
+        <tr>
+            <td style='text-align:center; font-weight:bold;'>{idx+1}</td>
+            <td style='font-weight:600;'>{it.get('discipline', 'Architecture')}</td>
+            <td><b>{it.get('category', 'General')}</b><br><small style='color:#64748B;'>{it.get('finding_id', '')}</small></td>
+            <td style='font-family:monospace; font-size:11px;'>{it.get('drawing_ref', 'AR-GENERAL')}</td>
+            <td>
+                <div style='color:#0F172A; margin-bottom:4px;'>{it.get('comment', '')}</div>
+                <div style='font-size:11px; color:#0369A1;'><b>Authority / Clause:</b> {it.get('clause', '-')} ({it.get('reference_source', '')})</div>
+            </td>
+            <td style='text-align:center;'>{act_badge}</td>
+            <td style='background:#FAF5FF;'>
+                <div style='color:#4C1D95; font-size:12px;'><b>{resp_note}</b></div>
+                {f"<div style='font-size:11px; color:#6B21A8; margin-top:2px;'>Revised Sheet: <code>{rev_dwg}</code></div>" if rev_dwg else ""}
+            </td>
+        </tr>
+        """
+
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset='utf-8'>
+<title>Ellington Properties - Design Review Comments Tracker</title>
+<style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 30px; color: #0F172A; background: #F8FAFC; }}
+    .header-box {{ background: #0A192F; color: white; padding: 20px 24px; border-radius: 8px; border-bottom: 4px solid #D4AF37; display: flex; justify-content: space-between; align-items: center; }}
+    .meta-table {{ width: 100%; border-collapse: collapse; margin-top: 16px; background: white; border: 1px solid #CBD5E1; border-radius: 6px; overflow: hidden; }}
+    .meta-table td {{ padding: 8px 12px; border: 1px solid #E2E8F0; font-size: 12px; }}
+    .meta-label {{ background: #F1F5F9; color: #475569; font-weight: 700; width: 18%; text-transform: uppercase; font-size: 11px; }}
+    .legend-box {{ background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px 16px; margin: 16px 0; display: flex; gap: 20px; align-items: center; font-size: 12px; }}
+    .table-main {{ width: 100%; border-collapse: collapse; margin-top: 14px; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }}
+    .table-main th {{ background: #0B315E; color: white; padding: 10px 12px; font-size: 11px; text-transform: uppercase; border: 1px solid #0E2A47; text-align: left; }}
+    .table-main td {{ padding: 10px 12px; border: 1px solid #E2E8F0; font-size: 12px; vertical-align: top; }}
+</style>
+</head>
+<body>
+<div class='header-box'>
+    <div>
+        <h1 style='margin:0; font-size:22px; color:#FFFFFF;'>ELLINGTON PROPERTIES</h1>
+        <p style='margin:4px 0 0 0; color:#D4AF37; font-size:13px; font-weight:600;'>AI Design Review Management System - Official Comment Tracker</p>
+    </div>
+    <div style='text-align:right; font-size:12px; color:#94A3B8;'>
+        <div><b>Review Cycle:</b> <span style='color:#FFFFFF;'>{cycle_rec.get('cycle_id', 'CYCLE-1')}</span></div>
+        <div><b>Issued Date:</b> {cycle_rec.get('issued_at', now_date)}</div>
+    </div>
+</div>
+
+<table class='meta-table'>
+    <tr>
+        <td class='meta-label'>Project Name:</td><td><b>{cycle_rec.get('project', 'Ellington Bukadra Tower')}</b></td>
+        <td class='meta-label'>Lead Consultant:</td><td><b>Lead Architectural & Engineering Consultant</b></td>
+    </tr>
+    <tr>
+        <td class='meta-label'>Design Stage:</td><td><b>{cycle_rec.get('stage', 'Schematic Design')}</b></td>
+        <td class='meta-label'>Discipline:</td><td><b>{cycle_rec.get('discipline', 'Architecture & Planning')}</b></td>
+    </tr>
+    <tr>
+        <td class='meta-label'>Submission Ref:</td><td><b>{cycle_rec.get('submittal_version', 'V1.0')}</b> ({cycle_rec.get('submittal_filename', '')})</td>
+        <td class='meta-label'>Reviewer / Auth:</td><td><b>{cycle_rec.get('issued_by', 'Technical Architect')}</b></td>
+    </tr>
+</table>
+
+<div class='legend-box'>
+    <b>Action Key:</b>
+    <div><span style='background:#DC2626; color:white; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;'>1 - OPEN</span> Requires response and/or correction before acceptance</div>
+    <div><span style='background:#F59E0B; color:white; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;'>2 - PENDING</span> Requires response during next design stage</div>
+    <div><span style='background:#10B981; color:white; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;'>3 - CLOSED</span> Record comment - accepted as noted</div>
+</div>
+
+<table class='table-main'>
+    <thead>
+        <tr>
+            <th style='width:3%; text-align:center;'>No.</th>
+            <th style='width:12%;'>Discipline</th>
+            <th style='width:15%;'>Category / Submittal Item</th>
+            <th style='width:12%;'>Drawing Ref</th>
+            <th style='width:32%;'>Review Comments Details & Applicable Clause</th>
+            <th style='width:6%; text-align:center;'>Action</th>
+            <th style='width:20%;'>Consultant Response (Date-Stamped)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {rows_html}
+    </tbody>
+</table>
+</body>
+</html>"""

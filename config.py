@@ -1,6 +1,7 @@
 """
 Configuration and constants for Ellington AI Design Review Management System V1.
 Centralized scoring weights, role permissions, stage workflows, and UI tokens.
+Incorporates Ellington Properties' official 3-Tier Action Key & review standards.
 """
 
 from typing import Dict, Any
@@ -16,6 +17,25 @@ ROLES = [ROLE_TECHNICAL_ARCHITECT, ROLE_CONSULTANT]
 ROLE_DESCRIPTIONS = {
     ROLE_TECHNICAL_ARCHITECT: "Authorizing Design Authority: Reviews AI findings, authors manual findings, requests AI validation, locks & issues review packages, approves stages.",
     ROLE_CONSULTANT: "External Design Team: Reviews issued comments, submits responses/contestations, and submits revised drawing packages (V2.0+)."
+}
+
+# ---------------------------------------------------------
+# Ellington Official Action Key & Status Model (Spreadsheet Standard)
+# ---------------------------------------------------------
+ACTION_KEY_1_OPEN = "1 - OPEN (Correction required before acceptance)"
+ACTION_KEY_2_PENDING = "2 - PENDING (Resolve during next design stage)"
+ACTION_KEY_3_CLOSED = "3 - CLOSED (Record comment / Accepted)"
+
+ELLINGTON_ACTION_KEYS = [
+    ACTION_KEY_1_OPEN,
+    ACTION_KEY_2_PENDING,
+    ACTION_KEY_3_CLOSED
+]
+
+ACTION_KEY_COLORS = {
+    ACTION_KEY_1_OPEN: {"bg": "#FEF2F2", "fg": "#991B1B", "border": "#EF4444", "short": "1 - OPEN"},
+    ACTION_KEY_2_PENDING: {"bg": "#FFFBEB", "fg": "#92400E", "border": "#F59E0B", "short": "2 - PENDING"},
+    ACTION_KEY_3_CLOSED: {"bg": "#F0FDF4", "fg": "#065F46", "border": "#10B981", "short": "3 - CLOSED"}
 }
 
 # ---------------------------------------------------------
