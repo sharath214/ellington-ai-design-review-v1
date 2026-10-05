@@ -9,6 +9,7 @@ Covers:
 
 import re
 from typing import List, Dict, Any, Optional
+from config import ACTION_KEY_1_OPEN, ACTION_KEY_2_PENDING, ACTION_KEY_3_CLOSED
 
 # ---------------------------------------------------------
 # 17 Multi-Discipline Rule Catalogue (Aligned with Client Guidelines)
@@ -293,19 +294,20 @@ def snippet(text: str, keyword: str, window: int = 140) -> str:
 # Stream A: AI First-Pass Review Engine
 # ---------------------------------------------------------
 def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENSIVE_RULES) -> List[Dict[str, Any]]:
-    t = text.lower()
+    t = text.lower() if text else ""
     results = []
     
     for rule in rules_to_run:
-        found_kw = next((kw for kw in rule['keywords'] if kw.lower() in t), None)
+        found_kw = next((kw for kw in rule['keywords'] if kw.lower() in t), None) if t else None
         rule_sev = rule.get('severity', 'Medium')
         
         if found_kw:
-            status = 'Evidence Found'
-            severity = 'Info' if rule.get('issue_if_missing', True) else 'Needs Comparison'
-            finding = f"Confirmed evidence for {rule['category']} detected in submitted package."
+            status = 'Evidence Found (Verification Required)'
+            severity = rule_sev
+            finding = f"Keyword evidence for {rule['category']} detected in submitted text ('{found_kw}'). Full compliance verification against {rule['source']} required before acceptance."
             evidence = snippet(text, found_kw)
             confidence = 94 if len(evidence) > 80 else 82
+            consultant_comm = f"Verify and dimension {rule['category']} on submitted drawing sheets per {rule['source']} ({rule.get('standard_clause', '')}). Provide dimensioned annotations and schedule confirming compliance."
         else:
             if rule.get('issue_if_missing', True):
                 status = 'Potential Gap'
@@ -313,20 +315,18 @@ def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENS
                 finding = f"No explicit evidence detected for {rule['category']}. Verification against {rule['source']} required."
                 evidence = f"No keyword match found for {', '.join(rule['keywords'][:3])}."
                 confidence = 75
+                consultant_comm = f"Please provide design drawings, specifications, and calculation schedules verifying {rule['category']} against {rule['source']} ({rule.get('standard_clause', '')})."
             else:
-                status = 'Needs Baseline Comparison'
+                status = 'Cross-Discipline Check'
                 severity = rule_sev
                 finding = f"Cross-discipline verification required against approved baseline master plan / structural sheets."
                 evidence = 'Cross-discipline baseline verification needed.'
                 confidence = 90
+                consultant_comm = f"Coordinate {rule['category']} with related discipline packages and confirm alignment with {rule['source']} ({rule.get('standard_clause', '')})."
 
-        default_consultant = (
-            f"Please verify {rule['category']} against {rule['source']} ({rule.get('standard_clause', '')}) and submit revised drawing / specification."
-            if status != 'Evidence Found' else ''
-        )
-
-        # Set default Action Key: Action 1 for gaps, Action 3 for compliant
-        action_key = "1 — OPEN (Correction required before acceptance)" if status != 'Evidence Found' else "3 — CLOSED (Record comment / Accepted)"
+        # On initial upload / first pass, ALL compliance items & gaps must default to Action 1 - OPEN!
+        # Under NO circumstances should first-pass items default to Action 3 - CLOSED.
+        action_key = ACTION_KEY_1_OPEN
 
         results.append({
             'id': rule['id'],
@@ -341,13 +341,14 @@ def run_ai_first_pass(text: str, rules_to_run: List[Dict[str, Any]] = COMPREHENS
             'ai_confidence': f'{confidence}%',
             'finding_text': finding,
             'evidence_text': evidence,
-            'consultant_comment': default_consultant,
+            'consultant_comment': consultant_comm,
             'internal_note': '',
-            'status': 'Pending Review',  # TA decision
-            'action_key': action_key,    # Ellington 1-Open / 2-Pending / 3-Closed
-            'cost_delta': rule.get('cost_delta', 0) if status != 'Evidence Found' else 0,
-            'schedule_delta': rule.get('schedule_delta', '0 wks') if status != 'Evidence Found' else '0 wks',
-            'attachments': []
+            'status': 'Confirm Issue',  # Default to active confirmed finding for review
+            'action_key': action_key,   # ACTION_KEY_1_OPEN
+            'cost_delta': rule.get('cost_delta', 0),
+            'schedule_delta': rule.get('schedule_delta', '0 wks'),
+            'attachments': [],
+            'ta_comment': consultant_comm
         })
     return results
 

@@ -417,3 +417,38 @@ def build_ellington_spreadsheet_tracker_html(cycle_rec: Dict[str, Any]) -> str:
 </table>
 </body>
 </html>"""
+
+# ---------------------------------------------------------
+# Project Data Reset / Start Fresh
+# ---------------------------------------------------------
+def clear_all_project_data(keep_audit_init: bool = True) -> None:
+    """Clears all review cycles, stage history records, and audit events so the user can start fresh with a new project."""
+    save_review_cycles([])
+    save_stage_history([])
+    if keep_audit_init:
+        init_event = [{
+            'event_id': f"EVT-{uuid.uuid4().hex[:8].upper()}",
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'user': "Technical Architect",
+            'role': "Technical Architect",
+            'action': "Workspace Reset / Cleared",
+            'finding_id': "-",
+            'review_cycle': "Cycle 1",
+            'previous_value': "All Previous Projects",
+            'new_value': "Clean Workspace",
+            'details': "All previous project records, review cycles, and stage history were cleared to start fresh."
+        }]
+        save_audit_trail(init_event)
+    else:
+        save_audit_trail([])
+        
+    if UPLOADS_DIR.exists():
+        for item in UPLOADS_DIR.iterdir():
+            try:
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            except Exception:
+                pass
+

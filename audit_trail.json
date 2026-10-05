@@ -1,14 +1,14 @@
 [
   {
-    "event_id": "EVT-AE7F5FE6",
-    "timestamp": "2026-09-30 12:14:36",
-    "user": "Senior Architect",
+    "event_id": "EVT-D9790F40",
+    "timestamp": "2026-10-05 17:13:24",
+    "user": "Technical Architect",
     "role": "Technical Architect",
-    "action": "Smoke Test Passed",
-    "finding_id": "\u2014",
+    "action": "Workspace Reset / Cleared",
+    "finding_id": "-",
     "review_cycle": "Cycle 1",
-    "previous_value": "\u2014",
-    "new_value": "\u2014",
-    "details": ""
+    "previous_value": "All Previous Projects",
+    "new_value": "Clean Workspace",
+    "details": "All previous project records, review cycles, and stage history were cleared to start fresh."
   }
 ]

@@ -61,6 +61,7 @@ from storage_manager import (
     lock_and_issue_cycle_package,
     save_uploaded_file,
     build_ellington_spreadsheet_tracker_html,
+    clear_all_project_data,
     BASE_DIR,
     UPLOADS_DIR
 )
@@ -361,6 +362,23 @@ with st.sidebar:
     st.markdown(f"**Review Cycle:** `Cycle {st.session_state['current_cycle_num']}`")
     st.caption("🔒 **Human Authority Gate: Active**")
 
+    st.divider()
+    st.markdown("##### ⚙️ Project Workspace")
+    if st.button("🧹 Start Fresh (Clear All Data)", key="sb_clear_all_data", use_container_width=True, help="Clear previous project records, review cycles, and findings so you can start fresh."):
+        clear_all_project_data()
+        st.session_state['stream_a_findings'] = []
+        st.session_state['stream_b_findings'] = []
+        st.session_state['raw_submittal_text'] = ""
+        st.session_state['submittal_filename'] = ""
+        st.session_state['current_cycle_num'] = 1
+        st.session_state.pop('delta_results', None)
+        st.session_state.pop('v2_resub_text', None)
+        st.session_state.pop('v2_resub_name', None)
+        st.session_state['submittal_ver'] = "V1.0"
+        st.session_state['pkg_upload_key'] = st.session_state.get('pkg_upload_key', 0) + 1
+        st.success("Workspace reset to start fresh!")
+        st.rerun()
+
 # =========================================================
 # TECHNICAL ARCHITECT WORKSPACE
 # =========================================================
@@ -456,12 +474,31 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
         </div>
         """, unsafe_allow_html=True)
 
-        p_c1, p_c2, p_c3, p_c4 = st.columns([1.2, 1, 1, 0.8])
-        p_c1.text_input("Project Name", st.session_state['project'], key="studio_proj")
+        p_c1, p_c2, p_c3, p_c4, p_c5 = st.columns([1.2, 0.9, 0.9, 0.6, 0.9])
+        proj_val = p_c1.text_input("Project Name", value=st.session_state.get('project', 'Ellington Project'), key="studio_proj")
+        if proj_val and proj_val != st.session_state.get('project'):
+            st.session_state['project'] = proj_val
         stage_choice = p_c2.selectbox("Design Stage", STAGE_ORDER, index=STAGE_ORDER.index(st.session_state['stage']) if st.session_state['stage'] in STAGE_ORDER else 1)
         st.session_state['stage'] = stage_choice
         st.session_state['discipline'] = p_c3.selectbox("Discipline", ['Architecture & Planning', 'Fire & Life Safety', 'Structural', 'MEP & Utilities', 'Acoustics'])
-        st.session_state['submittal_ver'] = p_c4.text_input("Submittal Version", "V1.0")
+        st.session_state['submittal_ver'] = p_c4.text_input("Submittal Version", st.session_state.get('submittal_ver', 'V1.0'))
+        
+        with p_c5:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🧹 Clear & Start Fresh", use_container_width=True, help="Clear all previous project findings, review cycles, and audit history so you can start fresh."):
+                clear_all_project_data()
+                st.session_state['stream_a_findings'] = []
+                st.session_state['stream_b_findings'] = []
+                st.session_state['raw_submittal_text'] = ""
+                st.session_state['submittal_filename'] = ""
+                st.session_state['current_cycle_num'] = 1
+                st.session_state.pop('delta_results', None)
+                st.session_state.pop('v2_resub_text', None)
+                st.session_state.pop('v2_resub_name', None)
+                st.session_state['submittal_ver'] = "V1.0"
+                st.session_state['pkg_upload_key'] = st.session_state.get('pkg_upload_key', 0) + 1
+                st.success("All previous project data cleared! Ready for fresh submittal.")
+                st.rerun()
 
         # Ingestion Section
         with st.expander("📥 Ingest Drawing Submittal Package (V1.0)", expanded=not bool(st.session_state['stream_a_findings'])):
@@ -486,39 +523,54 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     st.session_state['submittal_filename'] = "Infosight_Acoustic_Structural_Report_V1.txt"
                     st.success("Loaded Acoustics & Struct!")
                     
-            up_file = st.file_uploader("Or Upload PDF / DOCX / TXT Package", type=['pdf', 'docx', 'txt'], key="ta_pkg_upload")
-            if up_file:
-                st.session_state['raw_submittal_text'] = extract_text_from_file(up_file)
-                st.session_state['submittal_filename'] = up_file.name
+            up_col1, up_col2 = st.columns([1.2, 1])
+            with up_col1:
+                pkg_key = f"ta_pkg_upload_{st.session_state.get('pkg_upload_key', 0)}"
+                up_file = st.file_uploader("Upload Drawing Package (PDF / DOCX / TXT)", type=['pdf', 'docx', 'txt'], key=pkg_key)
+                if up_file:
+                    st.session_state['raw_submittal_text'] = extract_text_from_file(up_file)
+                    st.session_state['submittal_filename'] = up_file.name
+            with up_col2:
+                raw_pasted = st.text_area("Or Paste Drawing / Specification Text", value=st.session_state.get('raw_submittal_text', '') if not str(st.session_state.get('submittal_filename', '')).endswith(('.pdf', '.docx', '.txt')) else '', height=105, placeholder="Paste drawing notes, room schedules, executive summaries, or specifications...")
+                if raw_pasted and not str(st.session_state.get('submittal_filename', '')).endswith(('.pdf', '.docx', '.txt')):
+                    st.session_state['raw_submittal_text'] = raw_pasted
+                    st.session_state['submittal_filename'] = f"{st.session_state.get('project', 'Project')[:15]}_Direct_Input_V1.txt"
 
             if st.session_state.get('submittal_filename'):
                 st.info(f"Active Drawing Package: **{st.session_state['submittal_filename']}**")
 
-            if st.button("🚀 Run AI First-Pass Review", type="primary", use_container_width=True):
-                raw = st.session_state.get('raw_submittal_text', '')
-                if not raw:
-                    sample_p = BASE_DIR / "sample_schematic_arch.txt"
-                    raw = sample_p.read_text(encoding='utf-8') if sample_p.exists() else ""
-                    st.session_state['raw_submittal_text'] = raw
-                    st.session_state['submittal_filename'] = "015-24_Bukadra_Plot_6117262_Schematic_Architecture_V1.txt"
-                    
-                st.session_state['stream_a_findings'] = run_ai_first_pass(raw)
-                log_audit_event(
-                    action="AI First-Pass Review Executed",
-                    user="AI Engine",
-                    role="System",
-                    review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
-                    new_value=f"{len(st.session_state['stream_a_findings'])} Findings Generated",
-                    details=f"Evaluated against Meydan Horizon DCR Vol II and Authority rules."
-                )
-                upsert_stage_status(
-                    project=st.session_state['project'],
-                    stage=st.session_state['stage'],
-                    discipline=st.session_state['discipline'],
-                    status='Technical Architect Review',
-                    reviewer='Technical Architect'
-                )
-                st.rerun()
+            action_c1, action_c2 = st.columns([1.5, 1])
+            with action_c1:
+                if st.button("🚀 Run AI First-Pass Review", type="primary", use_container_width=True):
+                    raw = st.session_state.get('raw_submittal_text', '')
+                    if not raw:
+                        st.warning("⚠️ No submittal drawing package text found. Please upload a file (PDF/DOCX/TXT), paste text directly, or select a sample package.")
+                    else:
+                        st.session_state['stream_a_findings'] = run_ai_first_pass(raw)
+                        log_audit_event(
+                            action="AI First-Pass Review Executed",
+                            user="AI Engine",
+                            role="System",
+                            review_cycle=f"Cycle {st.session_state['current_cycle_num']}",
+                            new_value=f"{len(st.session_state['stream_a_findings'])} Findings Generated (All Action 1 - OPEN)",
+                            details=f"Evaluated against Meydan Horizon DCR Vol II and Authority rules for {st.session_state['project']}."
+                        )
+                        upsert_stage_status(
+                            project=st.session_state['project'],
+                            stage=st.session_state['stage'],
+                            discipline=st.session_state['discipline'],
+                            status='Technical Architect Review',
+                            reviewer='Technical Architect'
+                        )
+                        st.success(f"Generated {len(st.session_state['stream_a_findings'])} compliance review findings. All items initialized as Action 1 - OPEN.")
+                        st.rerun()
+            with action_c2:
+                if st.button("🧹 Clear Ingested Package & Findings", use_container_width=True):
+                    st.session_state['stream_a_findings'] = []
+                    st.session_state['stream_b_findings'] = []
+                    st.session_state['raw_submittal_text'] = ""
+                    st.session_state['submittal_filename'] = ""
+                    st.rerun()
 
         # Studio Tabs
         tab1, tab2, tab3, tab4 = st.tabs([
@@ -581,6 +633,13 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     for r in records:
                         if 'ta_comment' in r:
                             r['consultant_comment'] = r['ta_comment']
+                        # Synchronize status with Action Key (Action 1/2 are active issues, Action 3 is closed)
+                        if str(r.get('action_key', '')).startswith('3'):
+                            r['status'] = 'Closed'
+                            r['reviewer_decision'] = 'Dismiss Issue'
+                        else:
+                            r['status'] = 'Confirm Issue'
+                            r['reviewer_decision'] = 'Confirm Issue'
                     st.session_state['stream_a_findings'] = records
                     log_audit_event(
                         action="Stream A Action Keys Updated",
@@ -758,7 +817,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             st.markdown("### Final Review & Review Cycle Lock")
             st.caption("Convergence of confirmed AI findings and finalized Technical Architect findings into Ellington's official Comments Tracker.")
 
-            stream_a_confirmed = [f for f in st.session_state['stream_a_findings'] if f.get('status') in ['Confirm Issue', 'Modify & Confirm', 'Need Clarification', 'Confirmed']]
+            stream_a_confirmed = [f for f in st.session_state['stream_a_findings'] if not str(f.get('action_key', '')).startswith('3')]
             stream_b_finalized = [f for f in st.session_state['stream_b_findings'] if f.get('status') in ['Finalized', 'Ready for Consultant', 'AI Reviewed']]
             all_finalized = stream_a_confirmed + stream_b_finalized
 
