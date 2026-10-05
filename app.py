@@ -538,6 +538,11 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
             if not st.session_state['stream_a_findings']:
                 st.info("Run AI First-Pass Review above to populate Stream A findings.")
             else:
+                # Ensure ta_comment is populated
+                for item in st.session_state['stream_a_findings']:
+                    if 'ta_comment' not in item or not item['ta_comment']:
+                        item['ta_comment'] = item.get('consultant_comment') or item.get('finding_text', '')
+                
                 df_a = pd.DataFrame(st.session_state['stream_a_findings'])
                 
                 open_count = int(df_a['action_key'].str.startswith('1').sum())
@@ -566,15 +571,17 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                         'category': st.column_config.TextColumn('Category', width='medium', disabled=True),
                         'reference_source': st.column_config.TextColumn('Authority / DCR Source', width='medium', disabled=True),
                         'action_key': st.column_config.SelectboxColumn('Ellington Action Key *', options=ELLINGTON_ACTION_KEYS, width='medium', required=True),
-                        'status': st.column_config.SelectboxColumn('TA Decision', options=TA_AI_DECISIONS, width='medium', required=True),
-                        'internal_note': st.column_config.TextColumn('TA Internal Note (Hidden from Consultant)', width='medium'),
-                        'consultant_comment': st.column_config.TextColumn('Consultant-Facing Action Comment', width='large'),
+                        'ta_comment': st.column_config.TextColumn('TA Review Comments', width='large'),
                     },
                     key="editor_stream_a_v1"
                 )
                 
                 if st.button("💾 Save Stream A Decisions & Action Keys", key="save_stream_a_btn", type="primary"):
-                    st.session_state['stream_a_findings'] = edited_a.to_dict('records')
+                    records = edited_a.to_dict('records')
+                    for r in records:
+                        if 'ta_comment' in r:
+                            r['consultant_comment'] = r['ta_comment']
+                    st.session_state['stream_a_findings'] = records
                     log_audit_event(
                         action="Stream A Action Keys Updated",
                         user="Technical Architect",
