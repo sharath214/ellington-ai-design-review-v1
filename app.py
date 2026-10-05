@@ -787,15 +787,39 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                     if not fb:
                         continue
                     with st.container():
-                        st.markdown(f"#### Finding `{tf['id']}` — {tf['category']}")
+                        act_badge_t3 = "<span class='action-pill-red'>1 - OPEN</span>" if tf.get('action_key', '').startswith('1') else ("<span class='action-pill-amber'>2 - PENDING</span>" if tf.get('action_key', '').startswith('2') else "<span class='action-pill-green'>3 - CLOSED</span>")
                         st.markdown(f"""
-                        <div style='background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 14px 18px; margin: 10px 0;'>
+                        <div style='background:#FFFFFF; border: 1px solid #E2E8F0; border-left: 5px solid #0B315E; border-radius: 10px; padding: 16px 20px; margin-bottom: 6px;'>
+                            <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;'>
+                                <div>
+                                    <span style='font-size:1.05rem; font-weight:700; color:#0F172A; font-family:Outfit,sans-serif;'>Finding <code>{tf['id']}</code> &mdash; {tf['category']}</span>
+                                    <span style='margin-left:10px;'>{act_badge_t3}</span>
+                                </div>
+                                <div style='font-size:0.80rem; color:#64748B;'>Drawing: <b>{tf.get('drawing_ref', '&mdash;')}</b> &nbsp;|&nbsp; Severity: <b>{tf.get('severity', '&mdash;')}</b></div>
+                            </div>
+                            <div style='background:#F1F5F9; border-radius:6px; padding:10px 14px; margin-bottom:8px;'>
+                                <div style='font-size:0.75rem; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:5px;'>Finding Description / Observation</div>
+                                <div style='font-size:0.90rem; color:#1E293B; line-height:1.55;'>{tf.get('finding_text', '') or '<em style="color:#94A3B8;">No description entered.</em>'}</div>
+                            </div>
+                            <div style='background:#EFF6FF; border-radius:6px; padding:10px 14px;'>
+                                <div style='font-size:0.75rem; font-weight:700; color:#1D4ED8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:5px;'>Consultant-Facing Action Required</div>
+                                <div style='font-size:0.90rem; color:#1E40AF; line-height:1.55;'>{tf.get('consultant_comment', '') or '<em style="color:#94A3B8;">No consultant comment entered.</em>'}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown(f"""
+                        <div style='background:#F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 14px 18px; margin: 4px 0 12px 0;'>
+                            <div style='font-size:0.74rem; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;'>&#129302; AI Advisory Review</div>
                             <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem;'>
-                                <div><b>1. Reference Check:</b> {fb.get('reference_validation')}</div>
-                                <div><b>2. Duplicate Check:</b> {fb.get('duplicate_detection')}</div>
-                                <div><b>3. Drawing Evidence:</b> {fb.get('evidence_check')}</div>
-                                <div><b>4. Contradiction Check:</b> {fb.get('contradiction_detection')}</div>
-                                <div style='grid-column: span 2;'><b>7. Suggested Phrasing:</b> <i>"{fb.get('suggested_consultant_wording')}"</i></div>
+                                <div><b>1. Reference Check:</b> {fb.get('reference_validation', '&mdash;')}</div>
+                                <div><b>2. Duplicate Check:</b> {fb.get('duplicate_detection', '&mdash;')}</div>
+                                <div><b>3. Drawing Evidence:</b> {fb.get('evidence_check', '&mdash;')}</div>
+                                <div><b>4. Contradiction Check:</b> {fb.get('contradiction_detection', '&mdash;')}</div>
+                                <div style='grid-column: span 2; margin-top:6px; padding-top:8px; border-top:1px solid #E2E8F0;'>
+                                    <b>7. Suggested Consultant Phrasing:</b><br>
+                                    <span style='color:#0369A1; font-style:italic;'>"{fb.get('suggested_consultant_wording', '&mdash;')}"</span>
+                                </div>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -805,7 +829,7 @@ if st.session_state['active_role'] == ROLE_TECHNICAL_ARCHITECT:
                             tf['consultant_comment'] = fb.get('suggested_consultant_wording', tf['consultant_comment'])
                             tf['status'] = 'Finalized'
                             st.rerun()
-                        if a2.button("✋ Ignore & Finalize", key=f"ign_fb_{idx}"):
+                        if a2.button("🔶 Ignore & Finalize", key=f"ign_fb_{idx}"):
                             tf['status'] = 'Finalized'
                             st.rerun()
                         st.divider()
